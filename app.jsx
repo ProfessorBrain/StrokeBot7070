@@ -856,12 +856,41 @@ Powers, W. J., Rabinstein, A. A., Ackerson, T., Adeoye, O. M., Bambakidis, N. C.
 Psychogios, M., Brehm, A., Ribo, M., Rizzo, F., Strbian, D., Räty, S., Arenillas, J. F., Martínez-Galdámez, M., Hajdu, S. D., Michel, P., Gralla, J., Piechowiak, E. I., Kaiser, D. P. O., Puetz, V., Van den Bergh, F., De Raedt, S., Bellante, F., Dusart, A., Hellstern, V., … Fischer, U. (2025). Endovascular treatment for stroke due to occlusion of medium or distal vessels. New England Journal of Medicine, 392(14), 1374–1384. https://doi.org/10.1056/nejmoa2408954
 Thomalla, G., Simonsen, C. Z., Boutitie, F., Andersen, G., Berthezene, Y., Cheng, B., Cheripelli, B., Cho, T.-H., Fazekas, F., Fiehler, J., Ford, I., Galinovic, I., Gellissen, S., Golsari, A., Gregori, J., Günther, M., Guibernau, J., Häusler, K. G., Hennerici, M., … Gerloff, C. (2018). MRI-guided thrombolysis for stroke with unknown time of onset. New England Journal of Medicine, 379(7), 611–622. https://doi.org/10.1056/nejmoa1804355`;
 
-/** Modal showing citations */
-const CitationsModal = ({ open, onX }) =>
-  open ? (
+
+const URL_RE = /(https?:\/\/[^\s)\]]+)/g;
+
+function renderWithLinks(str) {
+  const parts = [];
+  let last = 0;
+  str.replace(URL_RE, (m, url, idx) => {
+    if (idx > last) parts.push(str.slice(last, idx));
+    parts.push(
+      <a
+        key={url + idx}
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="underline hover:text-sky-300 break-all"
+      >
+        {url}
+      </a>
+    );
+    last = idx + m.length;
+    return m;
+  });
+  if (last < str.length) parts.push(str.slice(last));
+  return parts;
+}
+
+const CitationsModal = ({ open, onX }) => {
+  if (!open) return null;
+
+  const items = CITATIONS_TEXT.trim().split(/\n+/).filter(Boolean);
+
+  return (
     <div className="fixed inset-0 z-[130] grid place-items-center">
       <div className="absolute inset-0 bg-black/60" onClick={onX} />
-      <div className="relative w-[min(96vw,720px)] max-h-[80vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+      <div className="relative w-[min(96vw,780px)] max-h-[85vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <button
           onClick={onX}
           className="absolute right-2 top-2 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300"
@@ -869,10 +898,18 @@ const CitationsModal = ({ open, onX }) =>
           Close
         </button>
         <h3 className="text-base font-semibold pr-8">citations</h3>
-        <pre className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-300">{CITATIONS_TEXT}</pre>
+
+        <ul className="mt-3 list-disc space-y-3 pl-5 text-sm leading-relaxed text-slate-300 select-text">
+          {items.map((entry, i) => (
+            <li key={i} className="break-words">
+              {renderWithLinks(entry)}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
-  ) : null;
+  );
+};
 
 /* =========================
  * Main App
