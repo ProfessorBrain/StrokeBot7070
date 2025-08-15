@@ -335,16 +335,16 @@ function generateCase(mode="learning"){
  * ========================= */
 function ActionsPanel({ onAction, disabled, disabledMap, hideSubs }) {
   const ACTIONS = {
-    examine: ["Examine", "NIHSS, glucose, HPI, LKAW"],
+    examine: ["Examine", "NIHSS, HPI"],
     ctNonCon: ["CT Head (Non-con)", "Rule out hemorrhage + ASPECTS"],
     cta: ["CTA Head & Neck", "Identify occlusion & site"],
     ctp: ["CT Perfusion", ">6h only; distal M2 guidance"],
     mri: ["Hyperacute MRI (DWI/FLAIR)", "Wake-up/Unknown if no LVO"],
     tnk: ["Administer TNK", "Known <=4.5h or MRI mismatch"],
-    evt: ["Endovascular Thrombectomy", "By site & time"],
-    floor: ["Admit to Floor", "Stroke unit care"],
-    nicu: ["Admit to NeuroICU", "Higher acuity"],
-    cancel: ["Cancel Code Stroke", "End code if criteria met"],
+    evt: ["Endovascular Thrombectomy", "For LVOs"],
+    floor: ["Admit to Stroke Unit", ""],
+    nicu: ["Admit to NeuroICU", ""],
+    cancel: ["Cancel Code Stroke", " "],
   };
 
   const baseBtn = "rounded-xl px-4 py-3 text-left font-semibold disabled:opacity-60 border";
