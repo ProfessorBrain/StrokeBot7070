@@ -1324,7 +1324,7 @@ function App() {
 
       <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/70 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <h1 className="text-lg font-bold">🤖🧠 StrokeBot Simulator 7070</h1>
+          <h1 className="text-lg font-bold">🤖🧠 StrokeBot Simulator 7070 v0.5</h1>
           <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
             <span>Mode:</span>
             <div className="inline-flex items-center gap-2">
