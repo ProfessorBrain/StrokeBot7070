@@ -1,13 +1,4 @@
 /* StrokeBot Simulator 7070 — merged JSX
-   Includes:
-   - Lowercase "citations" footer trigger
-   - CT Perfusion button with proper title + subline (">6h only; distal M2 guidance")
-   - Cleaner citations modal (bulleted, clickable links, wrapped URLs)
-   - Disposition rules + notifications:
-        * NeuroICU if TNK given, EVT performed, ICH/SAH/SDH, or Basilar occlusion
-        * ICA or M1 are neutral (either unit acceptable, no penalty)
-        * All others -> Floor
-        * Toast warning + recommended unit if wrong
 */
 
 /* global React, ReactDOM */
@@ -674,7 +665,7 @@ function App(){
 
       <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/70 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <h1 className="text-lg font-bold">StrokeBot Simulator 7070</h1>
+          <h1 className="text-lg font-bold">🤖🧠 StrokeBot Simulator 7070 v0.5</h1>
           <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
             <span>Mode:</span>
             <div className="inline-flex items-center gap-2">
