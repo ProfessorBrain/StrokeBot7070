@@ -1,7 +1,5 @@
 /* StrokeBot Simulator 7070 - external JSX build (no imports needed).
-   How to use:
-   - Keep index.html static.
-   - Replace this file (app.jsx) with your new revision and refresh.
+
 */
 
 /* global React, ReactDOM */
@@ -353,15 +351,18 @@ const isDisablingDeficit = (d, dominantSide) => {
 };
 
 /** Admit disposition appropriateness */
-const isAdmitAppropriate = (state, admitTo) => {
-  const needsICU =
-    state.type === "ICH" ||
-    state.type === "SAH" ||
-    state.type === "SDH" ||
-    state.actions.tnk ||
-    state.actions.evt ||
-    state.nihssDetail.total >= 10;
+const shouldGoToNeuroICU = (state) => {
+  return (
+    !!state?.actions?.tnk ||
+    !!state?.actions?.evt ||
+    state?.type === "ICH" ||
+    state?.type === "SAH" ||
+    state?.type === "SDH"
+  );
+};
 
+const isAdmitAppropriate = (state, admitTo) => {
+  const needsICU = shouldGoToNeuroICU(state);
   return (needsICU && admitTo === "nicu") || (!needsICU && admitTo === "floor");
 };
 
