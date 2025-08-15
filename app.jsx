@@ -430,7 +430,7 @@ function NIHSSSummary({ detail, onChoose }) {
 
   return (
     <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-      <div className="text-sm font-semibold">NIH Stroke Scale (NIHSS)</div>
+      <div className="text-sm font-semibold">Neurologic exam summary (NIHSS)</div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-3">
         {rows.map(([k, v]) => (
           <div
@@ -710,16 +710,16 @@ function generateCase(mode = "learning") {
  * ========================= */
 function ActionsPanel({ onAction, disabled, disabledMap, hideSubs }) {
   const ACTIONS = {
-    examine: ["Examine", ""],
-    ctNonCon: ["CT Head (Non-contrast)", ""],
-    cta: ["CTA Head & Neck", ""],
-    ctp: ["CT Perfusion", ""],
+    examine: ["Examine", "NIHSS, glucose, HPI, LKAW"],
+    ctNonCon: ["CT Head (Non-con)", "Rule out hemorrhage + ASPECTS"],
+    cta: ["CTA Head & Neck", "Identify occlusion & site"],
+    ctp: ["CT Perfusion", ">6h; distal M2 guidance"],
     mri: ["Hyperacute MRI (DWI/FLAIR)", "Wake-up/Unknown if no LVO"],
     tnk: ["Administer TNK", "Known <=4.5h or MRI mismatch"],
     evt: ["Endovascular Thrombectomy", "By site & time"],
-    floor: ["Admit to Floor", ""],
-    nicu: ["Admit to NeuroICU", ""],
-    cancel: ["Cancel Code Stroke", ""],
+    floor: ["Admit to Floor", "Stroke unit care"],
+    nicu: ["Admit to NeuroICU", "Higher acuity"],
+    cancel: ["Cancel Code Stroke", "End code if criteria met"],
   };
 
   const baseBtn = "rounded-xl px-4 py-3 text-left font-semibold disabled:opacity-60 border";
@@ -954,47 +954,21 @@ function App() {
     push("Mode switched", "Now in " + n + " mode. New case generated.");
   };
 
-  // --- PATCH: replace your existing commitAdmit with this ---------------------
-const commitAdmit = (admitTo) => {
-  if (data.finished) {
-    push("Case finished", "Start a new case to continue.", "warn");
-    return;
-  }
-
-  const s = { ...data, actions: { ...data.actions, admitted: admitTo } };
-  const { rec, reason } = getRecommendedDisposition(s);
-  const ok = isAdmitAppropriate(s, admitTo);
-  const label = admitTo === "nicu" ? "NeuroICU" : "Floor";
-
-  // Neutral cases (ICA/M1): no penalty either way.
-  if (rec === "either") {
-    addLog("info", "ICA/M1 occlusion — either NeuroICU or Floor acceptable.");
-    push("Disposition recorded", `${label} chosen (no penalty for ICA/M1).`, "info", 4200);
-  } else {
-    // Score & log based on correctness
-    s.score = clamp(s.score + (ok ? 4 : -10));
-    addLog(ok ? "good" : "bad", ok ? `${label} appropriate.` : `${label} suboptimal for condition.`);
-
-    // Standard toast
-    push(
-      "Disposition selected",
-      `${label} chosen. Case will be graded.`,
-      ok ? "good" : "warn",
-      4200
-    );
-
-    // If wrong, additionally notify the recommended unit + reason
-    if (!ok) {
-      const recLabel = rec === "nicu" ? "NeuroICU" : "Floor";
-      push("Recommended disposition", `Recommend ${recLabel} (${reason}).`, "warn", 5200);
+  const commitAdmit = (admitTo) => {
+    if (data.finished) {
+      push("Case finished", "Start a new case to continue.", "warn");
+      return;
     }
-  }
+    const s = { ...data, actions: { ...data.actions, admitted: admitTo } };
+    const ok = isAdmitAppropriate(s, admitTo);
+    const label = admitTo === "nicu" ? "NeuroICU" : "Floor";
 
-  setPendingAdmit(null);
-  finishCase(s);
-};
-// --- END PATCH --------------------------------------------------------------
-
+    s.score = clamp(s.score + (ok ? 4 : -10));
+    addLog(ok ? "good" : "bad", ok ? label + " appropriate." : label + " suboptimal for condition.");
+    push("Disposition selected", label + " chosen. Case will be graded.", ok ? "good" : "warn", 4200);
+    setPendingAdmit(null);
+    finishCase(s);
+  };
 
   const commitCancel = () => {
     if (data.finished) {
@@ -1749,63 +1723,6 @@ try {
 } catch (e) {
   console.warn("tests", e);
 }
-
-// --- PATCH: disposition rules + recommendations -----------------------------
-
-// ICA or M1 occlusions are "neutral": either unit is acceptable (no penalty).
-const isNeutralICU = (s) =>
-  s?.type === "Ischemic" &&
-  (s?.ctaOcclusion === "ICA" || s?.ctaOcclusion === "MCA - M1");
-
-// Basilar always needs NeuroICU; TNK/EVT/ICH/SAH/SDH also require NeuroICU.
-const shouldGoToNeuroICU = (s) => {
-  if (!s) return false;
-  if (s.actions?.tnk || s.actions?.evt) return true;
-  if (s.type === "ICH" || s.type === "SAH" || s.type === "SDH") return true;
-  if (s.ctaOcclusion === "Basilar artery") return true; // ALWAYS ICU
-  // ICA/M1 are handled as neutral (no forced ICU) elsewhere.
-  return false;
-};
-
-// Returns whether the selected unit is appropriate under the new policy.
-const isAdmitAppropriate = (state, admitTo) => {
-  // Neutral: ICA/M1 — either choice is acceptable.
-  if (isNeutralICU(state)) return true;
-
-  const needsICU = shouldGoToNeuroICU(state);
-  return (needsICU && admitTo === "nicu") || (!needsICU && admitTo === "floor");
-};
-
-// Provide a recommendation + reason to surface in toasts when needed.
-const getRecommendedDisposition = (s) => {
-  if (isNeutralICU(s)) {
-    return {
-      rec: "either",
-      reason: "ICA/M1 occlusion — either NeuroICU or Floor acceptable",
-    };
-  }
-  if (shouldGoToNeuroICU(s)) {
-    const reason =
-      s.actions?.tnk
-        ? "TNK given"
-        : s.actions?.evt
-        ? "EVT performed"
-        : s.type === "ICH"
-        ? "intracerebral hemorrhage"
-        : s.type === "SAH"
-        ? "subarachnoid hemorrhage"
-        : s.type === "SDH"
-        ? "subdural hemorrhage"
-        : s.ctaOcclusion === "Basilar artery"
-        ? "basilar occlusion"
-        : "ICU criteria";
-    return { rec: "nicu", reason };
-  }
-  // Default: Floor (no ICU criteria present)
-  return { rec: "floor", reason: "no ICU criteria present" };
-};
-// --- END PATCH --------------------------------------------------------------
-
 
 /* =========================
  * Mount
