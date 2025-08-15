@@ -712,7 +712,7 @@ function ActionsPanel({ onAction, disabled, disabledMap, hideSubs }) {
     examine: ["Examine", "NIHSS, glucose, HPI, LKAW"],
     ctNonCon: ["CT Head (Non-con)", "Rule out hemorrhage + ASPECTS"],
     cta: ["CTA Head & Neck", "Identify occlusion & site"],
-    ctp: [">6h only; distal M2 guidance", ""],
+    ctp: ["CT Perfusion", ">6h; distal M2 guidance", ""],
     mri: ["Hyperacute MRI (DWI/FLAIR)", "Wake-up/Unknown if no LVO"],
     tnk: ["Administer TNK", "Known <=4.5h or MRI mismatch"],
     evt: ["Endovascular Thrombectomy", "By site & time"],
