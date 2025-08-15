@@ -430,7 +430,7 @@ function NIHSSSummary({ detail, onChoose }) {
 
   return (
     <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-      <div className="text-sm font-semibold">Neurologic exam summary (NIHSS)</div>
+      <div className="text-sm font-semibold">NIH Stroke Scale (NIHSS)</div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-3">
         {rows.map(([k, v]) => (
           <div
