@@ -1,11 +1,11 @@
 
-/* StrokeBot Simulator 7070 — merged JSX (v0.51+++)
-   New in this build:
-   - Penalty if nicardipine is given in ischemic cases that are NOT TNK-eligible by scenario.
-   - All intubated patients must be admitted to NeuroICU (blocking Floor disposition).
-   - New Other action: Administer PCC. Required before NeuroICU admit when hemorrhage + recent DOAC.
-   - Richer case stem: adds where/who/how they were found (EMS & inpatient variants).
-   - Keeps all prior gates: airway-first for 1/30, D50 raises glucose >=90, TNK blocked for non-disabling, MRI/Other button sizing rules, centered cancel text.
+/* StrokeBot Simulator 7070 — merged JSX (v0.51+++++)
+   Changes:
+   - Context lines now reflect NIHSS-consistent symptoms (no mismatched narratives).
+   - "Reveal Score" now reveals grade/score on the button itself; one-way (irreversible).
+   - Block cancelling code stroke if NIHSS > 5.
+   - New presentation datum: "On blood thinners" {yes 7%, unknown 5%, else no}; yes/unknown is a TNK contraindication.
+   - Kept prior rules: airway-first, D50 fix hypoglycemia, nicardipine penalties, PCC requirements, etc.
 */
 
 /* global React, ReactDOM */
@@ -58,6 +58,7 @@ const pickOcclusion = () => {
 
 const contraindicationLabels = (s) =>
   [
+    (s.bloodThinners && s.bloodThinners !== "no") && "On blood thinners",
     s.doac && "DOAC <=48h",
     s.recentGISurgery && "GI surgery 7d",
     s.recentStroke30d && "Prior stroke 30d",
@@ -120,7 +121,7 @@ const PANEL = "rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl
 const BLOCK = "rounded-xl border border-slate-800 bg-slate-950/70";
 
 /* =========================
- * Imaging / exam logic
+ * Exam logic
  * ========================= */
 function calcASPECTS(onsetType, minutesSinceLKAW, site, type) {
   if (type === "Mimic") return { score: 10 };
@@ -139,14 +140,16 @@ function calcASPECTS(onsetType, minutesSinceLKAW, site, type) {
 
 function calcNIHSS({ type, affectedSide, dominantSide, site, mimicBias = null }) {
   const cap = (n,h)=>Math.max(0,Math.min(n,h)), cap4=(n)=>cap(n,4);
-  let facial=0,gaze=0,visual=0,armL=0,armR=0,legL=0,legR=0,language=0,dysarthria=0,ataxia=0,sensory=0;
+  let loc=0,facial=0,gaze=0,visual=0,armL=0,armR=0,legL=0,legR=0,language=0,dysarthria=0,ataxia=0,sensory=0,neglect=0;
   if (type === "Mimic") {
+    loc = Math.random()<0.15 ? 1 : 0;
     sensory = choice([0,1]); dysarthria = choice([0,1]); if (mimicBias!=="non" && Math.random()<0.25) facial=1;
   } else if (type === "ICH" || type === "SAH") {
     facial = cap(randInt(0,2),3); gaze = cap(randInt(0,2),2); visual = cap(randInt(0,2),3); dysarthria = cap(randInt(0,2),2);
     if (affectedSide==="left"){ armL=cap4(randInt(1,3)); legL=cap4(randInt(1,3)); } else { armR=cap4(randInt(1,3)); legR=cap4(randInt(1,3)); }
     language = affectedSide === (dominantSide==="right"?"left":"right") ? cap(randInt(0,2),3) : 0;
   } else if (type === "SDH") {
+    loc = Math.random()<0.35 ? 1 : 0;
     facial = cap(randInt(0,2),3); gaze = cap(randInt(0,1),1); visual = cap(randInt(0,1),2);
     if (affectedSide==="left"){ armL=cap4(randInt(1,3)); legL=cap4(randInt(1,3)); armR=cap4(randInt(0,1)); legR=cap4(randInt(0,1)); }
     else { armR=cap4(randInt(1,3)); legR=cap4(randInt(1,3)); armL=cap4(randInt(0,1)); legL=cap4(randInt(0,1)); }
@@ -154,6 +157,7 @@ function calcNIHSS({ type, affectedSide, dominantSide, site, mimicBias = null })
     dysarthria = cap(randInt(0,2),2); ataxia = cap(randInt(0,1),1); sensory = cap(randInt(0,2),2);
   } else {
     const severe = ["ICA","MCA - M1","Basilar artery"].includes(site);
+    loc = severe ? (Math.random()<0.35 ? choice([1,2]) : 0) : (Math.random()<0.1 ? 1 : 0);
     const moderate = site === "MCA - proximal M2" || site === "MCA - distal M2";
     const mild = NON_EVT_SITES.includes(site) || !site;
     facial = cap(randInt(0, severe?2:moderate?2:1),3);
@@ -173,8 +177,16 @@ function calcNIHSS({ type, affectedSide, dominantSide, site, mimicBias = null })
   }
   if (site==="Basilar artery" || (site&&site.includes("PCA"))) language = 0;
   if (affectedSide==="left" && (armL>0||legL>0) && language>0) { if (Math.random()>=0.02) language = 0; }
-  const total = facial+gaze+visual+armL+armR+legL+legR+language+dysarthria+ataxia+sensory;
-  return { facial, gaze, visual, armL, armR, legL, legR, language, dysarthria, ataxia, sensory, total };
+  
+  // Neglect likelihood: right hemisphere involvement (affectedSide === "left") increases probability;
+  // also associated with gaze/visual field deficits.
+  const neglectBase = (affectedSide==="left" ? 0.5 : 0.2) + (gaze>0 || visual>0 ? 0.2 : 0);
+  if (Math.random() < Math.min(0.8, Math.max(0, neglectBase))) {
+    neglect = choice([1,1,2]); // bias toward mild neglect
+  }
+
+  const total = loc+facial+gaze+visual+armL+armR+legL+legR+language+dysarthria+ataxia+sensory+neglect;
+  return { loc, facial, gaze, visual, armL, armR, legL, legR, language, dysarthria, ataxia, sensory, neglect, total };
 }
 
 const isDisablingDeficit = (d, dominantSide) => {
@@ -182,7 +194,7 @@ const isDisablingDeficit = (d, dominantSide) => {
   const unilateral = (leftWeak && !rightWeak) || (rightWeak && !leftWeak);
   const dominantUE = dominantSide==="right" ? d.armR>0 : d.armL>0;
   const anyLeg = d.legL>0 || d.legR>0;
-  return unilateral || dominantUE || anyLeg || d.language>0 || d.dysarthria>=2 || d.ataxia>0 || d.gaze>0 || d.visual>0 || d.facial>=2;
+  return unilateral || dominantUE || anyLeg || d.language>0 || d.dysarthria>=2 || d.ataxia>0 || d.gaze>0 || d.visual>0 || d.facial>=2 || d.neglect>0 || d.loc>=1;
 };
 
 /* =========================
@@ -190,11 +202,11 @@ const isDisablingDeficit = (d, dominantSide) => {
  * ========================= */
 function tnkScenarioEligible(s) {
   if (s.type !== "Ischemic") return false;
-  // true disabling by exam, independent of user classification
   const disabling = isDisablingDeficit(s.nihssDetail, s.dominantSide);
   if (!disabling) return false;
-  if (s.doac || s.recentGISurgery || s.recentStroke30d) return false; // absolute-ish in our sim
-  // time path
+  // absolute-ish in our sim, including general blood thinners (yes or unknown)
+  if (s.bloodThinners && s.bloodThinners !== "no") return false;
+  if (s.doac || s.recentGISurgery || s.recentStroke30d) return false;
   const knownOK = s.onsetType === "known" && minutesToHours(s.minutesSinceLKAW) <= 4.5;
   const wuOK = (s.onsetType === "wake-up" || s.onsetType === "unknown") && !s.ctaOcclusion && s.mriMismatch === true;
   return knownOK || wuOK;
@@ -209,7 +221,7 @@ const isNeutralICU = (s) =>
 
 const shouldGoToNeuroICU = (s) => {
   if (!s) return false;
-  if (s.actions?.intubated) return true; // NEW: airway => ICU
+  if (s.actions?.intubated) return true; // airway => ICU
   if (s.actions?.tnk || s.actions?.evt) return true;
   if (s.type === "ICH" || s.type === "SAH" || s.type === "SDH") return true;
   if (s.ctaOcclusion === "Basilar artery") return true;
@@ -240,39 +252,126 @@ const getRecommendedDisposition = (s) => {
 };
 
 /* =========================
- * Case generator (adds richer context; keeps airway 1/30)
+ * Context builders that agree with NIHSS
  * ========================= */
-const EMS_CONTEXTS = [
-  "found collapsed on the kitchen floor by a spouse after a sudden thud",
-  "found on the bathroom floor by a roommate; last seen normal at bedtime",
-  "collapsed in a grocery store aisle; bystanders called 911",
-  "pulled over after a minor collision; officers noted slurred speech",
-  "found sitting in a car in the driveway, confused and weak on one side",
-  "neighbors requested a wellness check; patient found on the couch minimally responsive",
-  "at church when congregants saw a facial droop and called EMS",
-  "at work; coworkers noticed word-finding difficulty during a meeting",
-  "picked up from the dialysis center for sudden right-sided weakness",
-  "on a morning walk; passerby found the patient on the sidewalk",
-];
+function buildSymptomFromNIHSS(d, affectedSide) {
+  const parts = [];
+  const side = affectedSide;
+  if ((side==="left"?d.armL:d.armR)>0 || (side==="left"?d.legL:d.legR)>0) parts.push(side + "-sided weakness");
+  if (d.language>0) parts.push("word-finding difficulty");
+  if (d.dysarthria>0) parts.push("slurred speech");
+  if (d.facial>0) parts.push(side + " facial droop");
+  if (d.gaze>0) parts.push("gaze deviation");
+  if (d.visual>0) parts.push("visual field deficit");
+  if (d.ataxia>0) parts.push("incoordination");
+  if (d.sensory>0) parts.push("numbness");
+  if (d.loc>0) parts.push("decreased responsiveness");
+  if (d.neglect>0) parts.push("inattention/neglect");
+  return parts;
+}
 
-const INPT_CONTEXTS = [
-  "on the surgical floor (post‑op day 1) when the nurse noted new aphasia",
-  "in the ICU during a sedation holiday when new hemiparesis was observed",
-  "as an ED boarder awaiting a bed; staff noted sudden dysarthria",
-  "on the oncology ward during morning rounds with abrupt confusion",
-  "in radiology waiting area, developed a new gaze deviation",
-  "on telemetry unit after syncopal workup, staff noticed unilateral weakness",
-  "on the rehab unit where therapists observed acute incoordination",
-  "on the cardiac stepdown unit; nurse noted new neglect during vitals",
-];
+const EMS_CONTEXT_TEMPLATES = {
+  neutral: [
+    "found collapsed on the kitchen floor by a spouse",
+    "found on the bathroom floor by a roommate; last seen normal at bedtime",
+    "neighbors requested a wellness check; patient found on the couch minimally responsive",
+    "on a morning walk; passerby found the patient on the sidewalk",
+    "found sitting in a car in the driveway, confused"
+  ],
+  weakness: [
+    "bystanders noted sudden unilateral weakness at a grocery store",
+    "family reported one-sided weakness during breakfast at home"
+  ],
+  aphasia: [
+    "family noticed sudden difficulty speaking at home",
+    "at work; coworkers noticed word-finding difficulty during a meeting"
+  ],
+  dysarthria: [
+    "bystanders noticed sudden slurred speech at a café",
+    "spouse reported abrupt slurred speech while watching TV"
+  ],
+  facial: [
+    "at church when congregants saw a facial droop and called EMS",
+    "neighbor noticed a new facial droop and called 911"
+  ],
+  gaze: [
+    "EMS observed a new gaze deviation during transport"
+  ],
+  visual: [
+    "patient was bumping into objects on one side per bystanders"
+  ],
+  ataxia: [
+    "on a walk; witnesses saw sudden unsteady gait"
+  ]
+  ,
+  loc: [
+    "bystanders described decreased responsiveness before EMS arrival",
+    "family reported the patient was difficult to arouse"
+  ],
+  neglect: [
+    "family noticed the patient ignored one side when asked to raise both arms"
+  ]
+};
 
+const INPT_CONTEXT_TEMPLATES = {
+  neutral: [
+    "as an ED boarder awaiting a bed",
+    "on the oncology ward during morning rounds with abrupt confusion",
+    "on telemetry unit during routine vitals check"
+  ],
+  weakness: [
+    "nurses noted new unilateral weakness on the rehab unit",
+    "on the cardiac stepdown unit; staff noticed unilateral weakness"
+  ],
+  aphasia: [
+    "on the surgical floor (post‑op day 1) when the nurse noted new aphasia"
+  ],
+  dysarthria: [
+    "staff noted sudden dysarthria on the medical ward"
+  ],
+  gaze: [
+    "in radiology waiting area, developed a new gaze deviation"
+  ],
+  ataxia: [
+    "therapists on the rehab unit observed acute incoordination"
+  ],
+  visual: [
+    "team noticed new visual neglect during neuro checks"
+  ],
+  facial: [
+    "nurse observed a new facial droop during meds pass"
+  ]
+};
+
+function pickContextLine(activator, d) {
+  const has = {
+    weakness: (d.armL>0||d.armR>0||d.legL>0||d.legR>0),
+    aphasia: d.language>0,
+    dysarthria: d.dysarthria>0,
+    gaze: d.gaze>0,
+    visual: d.visual>0,
+    ataxia: d.ataxia>0,
+    facial: d.facial>0,
+    loc: d.loc>0,
+    neglect: d.neglect>0,
+  };
+  const pool = activator==="EMS" ? EMS_CONTEXT_TEMPLATES : INPT_CONTEXT_TEMPLATES;
+  const eligible = [];
+  for (const key of Object.keys(has)) if (has[key] && pool[key]) eligible.push(...pool[key]);
+  const base = (pool.neutral || []);
+  const candidates = eligible.length ? eligible : base;
+  return choice(candidates);
+}
+
+/* =========================
+ * Case generator
+ * ========================= */
 function generateCase(mode="learning"){
   const age = randInt(38,92), sex = choice(["male","female"]);
   let onsetType="known", minutesSinceLKAW=randInt(10,270), type="Ischemic", baselineMrs=randomBaselineMrs(), ctaOcclusion=null;
   let dominantSide = Math.random()<0.9 ? "right" : "left", affectedSide=choice(["left","right"]);
-  let doac=Math.random()<0.1, recentGISurgery=Math.random()<0.05, recentStroke30d=Math.random()<0.06, glucose=Math.random()<0.08?randInt(40,59):randInt(60,280);
+  let doac=false, recentGISurgery=Math.random()<0.05, recentStroke30d=Math.random()<0.06, glucose=Math.random()<0.08?randInt(40,59):randInt(60,280);
   let perfMismatch=false, ischemicVolume=0;
-
   let activator = Math.random()<0.75 ? "EMS" : "Inpatient staff";
 
   if (mode==="learning"){
@@ -289,7 +388,7 @@ function generateCase(mode="learning"){
     if (r<0.7){ type="Mimic"; onsetType=choice(["known","wake-up","unknown"]); minutesSinceLKAW=onsetType==="known"?randInt(30,600):onsetType==="wake-up"?randInt(360,1440):randInt(120,1440); }
     else if (r<0.73){ type="SAH"; minutesSinceLKAW=randInt(30,1440); }
     else if (r<0.88){ type="Ischemic"; ctaOcclusion=pickOcclusion(); minutesSinceLKAW=ctaOcclusion==="MCA - distal M2"?randInt(361,1200):randInt(30,1200); perfMismatch=Math.random()<0.5; ischemicVolume=randInt(30,160); }
-    else if (r<0.93){ type="Ischemic"; minutesSinceLKAW=randInt(10,270); doac=Math.random()<0.05; recentGISurgery=Math.random()<0.03; recentStroke30d=Math.random()<0.03; glucose=randInt(70,220); }
+    else if (r<0.93){ type="Ischemic"; minutesSinceLKAW=randInt(10,270); /* doac tied to bloodThinners later */ recentGISurgery=Math.random()<0.03; recentStroke30d=Math.random()<0.03; glucose=randInt(70,220); }
     else { if (Math.random()<0.6) type="ICH"; else { type="Ischemic"; ctaOcclusion=Math.random()<0.86?pickOcclusion():null; }
       onsetType=choice(["known","wake-up","unknown"]); minutesSinceLKAW=onsetType==="known"?randInt(60,1440):randInt(240,1440);
       if (ctaOcclusion==="MCA - distal M2"){ onsetType="known"; if (minutesSinceLKAW<=360) minutesSinceLKAW=randInt(361,1200); }
@@ -307,55 +406,89 @@ function generateCase(mode="learning"){
   let ctpTmax6=0, ctpRcbf30=0;
   if (type==="Ischemic"){ ctpTmax6=ischemicVolume; const ratio = perfMismatch?choice([1.8,2.1,2.4,2.8,3.0]):choice([1.0,1.2,1.3,1.4,1.5]); ctpRcbf30=Math.max(1, Math.round(ctpTmax6/ratio)); }
 
-  const notes=[]; 
-  if (doac) notes.push("recent DOAC ingestion within 48h");
-  if (recentGISurgery) notes.push("GI surgery within the past week");
-  if (recentStroke30d) notes.push("prior stroke within the last month");
-  if (glucose<60) notes.push("fingerstick glucose " + glucose + " mg/dL");
-
   // Vitals
   let sbp = type==="ICH"?randInt(180,230):randInt(100,185);
   let dbp = type==="ICH"?randInt(95,130):randInt(55, sbp<140?99:110);
   let spo2 = requiresIntubation ? randInt(82, 89) : randInt(92, 100);
   let hr = requiresIntubation ? randInt(105, 128) : randInt(56, 118);
 
-  // Contextual discovery line
-  const context = activator==="EMS" ? choice(EMS_CONTEXTS) : choice(INPT_CONTEXTS);
-  const contextLine = activator==="EMS"
-    ? `\nContext: Patient ${context}.`
-    : `\nContext: Patient ${context}. Primary team requests immediate neurology evaluation.`;
+  // Blood thinners history (yes 7%, unknown 5%, else no)
+  const rBT = Math.random()*100;
+  let bloodThinners = rBT < 7 ? "yes" : rBT < 12 ? "unknown" : "no";
+
+  
+  // Reconcile DOAC with blood thinners: DOAC info should only be known when blood thinners is confirmed "yes".
+  if (bloodThinners === "yes") {
+    // ~35% of "on blood thinners" are DOACs with recent ingestion (<48h)
+    doac = Math.random() < 0.35;
+  } else {
+    // If not confirmed on blood thinners (no/unknown), we should not have a definite DOAC ingestion fact
+    doac = false;
+  }
+// Narrative construction
+  const d = nihssDetail;
+  const symptomParts = buildSymptomFromNIHSS(d, affectedSide);
+  const symptomHint = symptomParts.slice(0,2).join(" and ");
+  const extra = symptomHint ? " for deficits of " + symptomHint : "";
+
+  const lka = onsetType==="known" ? (Math.round(minutesToHours(minutesSinceLKAW)*10)/10 + " hours ago")
+             : onsetType==="wake-up" ? "wake-up stroke (unknown exact time)" : "unknown";
+
+  const contextLine = (function(){
+    const line = pickContextLine(activator, d);
+    return activator==="EMS"
+      ? `\nContext: Patient ${line}.`
+      : `\nContext: Patient ${line}. Primary team requests immediate neurology evaluation.`;
+  })();
+
+  const notes=[];
+if (doac) notes.push("recent DOAC ingestion within 48h");
+  if (recentGISurgery) notes.push("GI surgery within the past week");
+  if (recentStroke30d) notes.push("prior stroke within the last month");
+  if (glucose<60) notes.push("fingerstick glucose " + glucose + " mg/dL");
 
   const extraEMS = notes.length ? "\n" + activator + " adds: " + notes.join("; ") + "." : "";
   const mrs5 = baselineMrs===5 ? "\n" + activator + " reports the patient has severe baseline disability (mRS 5)." : "";
-  const d=nihssDetail, side=affectedSide, arm=(side==="left"?d.armL:d.armR)>0, leg=(side==="left"?d.legL:d.legR)>0;
-  const hints=[]; if (arm&&leg) hints.push(side+"-sided weakness"); else if (arm) hints.push(side+" arm weakness"); else if (leg) hints.push(side+" leg weakness");
-  if (d.language>0) hints.push("word-finding difficulty"); if (d.dysarthria>0) hints.push("slurred speech"); if (d.facial>0) hints.push(side+" facial droop");
-  if (d.gaze>0) hints.push("gaze deviation"); if (d.visual>0) hints.push("visual field deficit"); if (d.ataxia>0) hints.push("incoordination"); if (d.sensory>0) hints.push("numbness");
-  const hint = hints.slice(0,2).join(" and ");
-  const extra = hint ? " for deficits of " + hint : "";
-  const lka = onsetType==="known" ? (Math.round(minutesToHours(minutesSinceLKAW)*10)/10 + " hours ago")
-             : onsetType==="wake-up" ? "wake-up stroke (unknown exact time)" : "unknown";
   const respLine = requiresIntubation ? "\nOn arrival, the patient is in obvious respiratory distress with hypoxia and poor airway protection." : "";
-  const stem = activator + " activates a stroke code for a " + age + "-year-old " + sex + extra +
-               ".\nLast known awake & well: " + lka +
-               ".\nArrival vitals: BP " + sbp + "/" + dbp + ", HR " + hr + ", SpO2 " + spo2 + "%." +
-               mrs5 + extraEMS + contextLine + respLine + "\nYou are at bedside with the team.";
+
+  const contextBrief = pickContextLine(activator, d);
+  const respShort = requiresIntubation ? " Patient appears in respiratory distress." : "";
+  const stem = `${activator} brings a ${age}-year-old ${sex} with${extra || " acute neurologic symptoms"}. Last known well: ${lka}. Vitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%. Found/observed: ${contextBrief}. Blood thinners: ${bloodThinners.toUpperCase()}.` +
+               `${notes.length ? " Notables: " + notes.join("; ") + "." : ""}` +
+               `${respShort} You are at bedside with the team.`;
 
   return {
     mode, age, sex, onsetType, minutesSinceLKAW, baselineMrs, type, ctaOcclusion, dominantSide, affectedSide,
     nihssDetail, doac, glucose, recentGISurgery, recentStroke30d, perfMismatch, ischemicVolume, ctpTmax6, ctpRcbf30,
     aspects: null, mriMismatch: Math.random()<0.55,
     actions: { examine:false, ctNonCon:false, cta:false, ctp:false, mri:false, tnk:false, evt:false, admitted:null, cancel:false, nicardipine:false, d50:false, intubated:false, pcc:false },
-    userClass: null, score: 100, finished: false, stem, sbp, dbp, spo2, hr, requiresIntubation, activator,
+    userClass: null, score: 100, finished: false, stem, sbp, dbp, spo2, hr, requiresIntubation, activator, bloodThinners,
   };
 }
 
+
+/* =========================
+ * Medication/airway indication helpers
+ * ========================= */
+function nicardipineIndication(s){
+  // Hemorrhage with SBP >=140: yes
+  if (s.type==="ICH" || s.type==="SAH" || s.type==="SDH"){
+    if (s.sbp >= 140) return {ok:true, reason:"Hemorrhage with SBP ≥140 before NeuroICU"};
+    return {ok:false, reason:"Hemorrhage but SBP <140"};
+  }
+  // Ischemic: only when BP is above TNK thresholds AND a TNK path exists
+  if (s.type==="Ischemic"){
+    if ((s.sbp>185 || s.dbp>110) && tnkScenarioEligible(s)) return {ok:true, reason:"Pre-TNK BP control (SBP>185 or DBP>110)"};
+    return {ok:false, reason:"No TNK path or BP not above threshold"};
+  }
+  return {ok:false, reason:"Not indicated"};
+}
 /* =========================
  * Actions panel
  * ========================= */
 function ActionsPanel({ onAction, disabled, disabledMap, hideSubs }) {
   const ACTIONS = {
-    examine: ["Examine", "NIHSS, HPI"],
+    examine: ["Examine", "NIHSS, glucose"],
     ctNonCon: ["CT Head (Non-con)", "Rule out hemorrhage + ASPECTS"],
     cta: ["CTA Head & Neck", "Identify occlusion & site"],
     ctp: ["CT Perfusion", ">6h only; distal M2 guidance"],
@@ -416,7 +549,12 @@ function ActionsPanel({ onAction, disabled, disabledMap, hideSubs }) {
 function CaseSnapshot({ s }) {
   const fmtMins = (m)=>{ const h=Math.floor(m/60), mm=m%60; return h?`${h}h ${mm}m`:`${mm}m`; };
   const onset = s.onsetType==="known" ? `${fmtMins(s.minutesSinceLKAW)} since LKAW` : s.onsetType==="wake-up" ? "Wake-up stroke (unknown exact time)" : "Unknown LKAW";
-  const cx=[]; if (s.doac) cx.push("DOAC <=48h"); if (s.recentGISurgery) cx.push("GI surgery 7d"); if (s.recentStroke30d) cx.push("Prior stroke 30d"); if (s.glucose<60) cx.push(`Hypoglycemia (${s.glucose})`);
+  const cx=[];
+  if (s.bloodThinners && s.bloodThinners!=="no") cx.push("On blood thinners");
+  if (s.doac) cx.push("DOAC <=48h");
+  if (s.recentGISurgery) cx.push("GI surgery 7d");
+  if (s.recentStroke30d) cx.push("Prior stroke 30d");
+  if (s.glucose<60) cx.push(`Hypoglycemia (${s.glucose})`);
   const perf = s.type==="Ischemic" ? `TMax>6s ${s.ctpTmax6}cc; rCBF<30% ${s.ctpRcbf30}cc (ratio ${(s.ctpTmax6/Math.max(1,s.ctpRcbf30)).toFixed(1)})` : "n/a";
 
   const items = [
@@ -425,6 +563,7 @@ function CaseSnapshot({ s }) {
     ["Baseline mRS", s.baselineMrs],
     ["Current BP", `${s.sbp}/${s.dbp}`],
     ["SpO2", `${s.spo2}%`],
+    ["On blood thinners", s.bloodThinners.toUpperCase()],
     ["Activator", s.activator],
     ...(cx.length ? [["Contraindications", cx.join(", ")]] : []),
     ...(s.actions.examine ? [["NIHSS total", s.nihssDetail.total], ["Glucose", `${s.glucose} mg/dL`]] : []),
@@ -444,9 +583,14 @@ function CaseSnapshot({ s }) {
 }
 
 /* =========================
- * Citations (unchanged)
+ * Citations (unchanged text)
  * ========================= */
-const CITATIONS_TEXT = `Powers, W. J., Rabinstein, A. A., Ackerson, T., Adeoye, O. M., Bambakidis, N. C., Becker, K., Biller, J., Brown, M., Demaerschalk, B. M., Hoh, B., Jauch, E. C., Kidwell, C. S., Leslie-Mazwi, T. M., Ovbiagele, B., Scott, P. A., Sheth, K. N., Southerland, A. M., Summers, D. V., & Tirschwell, D. L. (2019). Guidelines for the early management of patients with acute ischemic stroke: 2019 update to the 2018 guidelines for the early management of acute ischemic stroke: A guideline for healthcare professionals from the American Heart Association/American Stroke Association. Stroke, 50(12). https://doi.org/10.1161/str.0000000000000211`;
+const CITATIONS_TEXT = `Goyal, M., Ospel, J. M., Ganesh, A., Dowlatshahi, D., Volders, D., Möhlenbruch, M. A., Jumaa, M. A., Nimjee, S. M., Booth, T. C., Buck, B. H., Kennedy, J., Shankar, J. J., Dorn, F., Zhang, L., Hametner, C., Nardai, S., Zafar, A., Diprose, W., Vatanpour, S., … Hill, M. D. (2025). Endovascular treatment of stroke due to medium-vessel occlusion. New England Journal of Medicine, 392(14), 1385–1395. https://doi.org/10.1056/nejmoa2411668
+Interim analysis of the discount randomized controlled trial. (n.d.). https://professional.heart.org/en/-/media/PHD-Files/Meetings/ISC/2025/sci-news/DISCOUNT-Data-Summary-Slide--ISC-2025.pptx?sc_lang=en
+Mokin, M., Jovin, T. G., Sheth, S. A., Nguyen, T. N., Asif, K. S., Hassan, A. E., Jadhav, A. P., Kenmuir, C., Liebeskind, D. S., Mansour, O., Nogueira, R. G., Novakovic, R., Ortega‐Gutierrez, S., Yoo, A. J., Guerrero, W. R., & Malik, A. M. (2025). Endovascular therapy in patients with acute ischemic stroke with large infarct: A guideline from the Society of Vascular and interventional neurology. Stroke: Vascular and Interventional Neurology, 5(2). https://doi.org/10.1161/svin.124.001581
+Powers, W. J., Rabinstein, A. A., Ackerson, T., Adeoye, O. M., Bambakidis, N. C., Becker, K., Biller, J., Brown, M., Demaerschalk, B. M., Hoh, B., Jauch, E. C., Kidwell, C. S., Leslie-Mazwi, T. M., Ovbiagele, B., Scott, P. A., Sheth, K. N., Southerland, A. M., Summers, D. V., & Tirschwell, D. L. (2019). Guidelines for the early management of patients with acute ischemic stroke: 2019 update to the 2018 guidelines for the early management of acute ischemic stroke: A guideline for healthcare professionals from the American Heart Association/American Stroke Association. Stroke, 50(12). https://doi.org/10.1161/str.0000000000000211
+Psychogios, M., Brehm, A., Ribo, M., Rizzo, F., Strbian, D., Räty, S., Arenillas, J. F., Martínez-Galdámez, M., Hajdu, S. D., Michel, P., Gralla, J., Piechowiak, E. I., Kaiser, D. P. O., Puetz, V., Van den Bergh, F., De Raedt, S., Bellante, F., Dusart, A., Hellstern, V., … Fischer, U. (2025). Endovascular treatment for stroke due to occlusion of medium or distal vessels. New England Journal of Medicine, 392(14), 1374–1384. https://doi.org/10.1056/nejmoa2408954
+Thomalla, G., Simonsen, C. Z., Boutitie, F., Andersen, G., Berthezene, Y., Cheng, B., Cheripelli, B., Cho, T.-H., Fazekas, F., Fiehler, J., Ford, I., Galinovic, I., Gellissen, S., Golsari, A., Gregori, J., Günther, M., Guibernau, J., Häusler, K. G., Hennerici, M., … Gerloff, C. (2018). MRI-guided thrombolysis for stroke with unknown time of onset. New England Journal of Medicine, 379(7), 611–622. https://doi.org/10.1056/nejmoa1804355`;
 
 const URL_RE = /(https?:\/\/[^\s)\]]+)/g;
 function renderWithLinks(str) {
@@ -488,7 +632,103 @@ const CitationsModal = ({ open, onX }) => {
 };
 
 /* =========================
- * App (adds PCC requirement & nicu rules)
+ * Modals
+ * ========================= */
+const SimpleModal=({open,title,onX,children,widthClass="w-[min(96vw,520px)]"})=> open?(
+  <div className="fixed inset-0 z-[125] grid place-items-center">
+    <div className="absolute inset-0 bg-black/60" onClick={onX} />
+    <div className={"relative "+widthClass+" rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl"}>
+      <div className="flex items-center justify-between">
+        <div className="text-base font-semibold">{title}</div>
+        <button onClick={onX} className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300">Close</button>
+      </div>
+      <div className="mt-3">{children}</div>
+    </div>
+  </div>
+):null;
+
+function NIHSSSummary({ detail, onChoose }) {
+  if (!detail) return null;
+  const rows = [
+    ["LOC", detail.loc],
+    ["Facial",detail.facial],["Gaze/Eyes",detail.gaze],["Visual fields",detail.visual],
+    ["Left arm",detail.armL],["Right arm",detail.armR],["Left leg",detail.legL],["Right leg",detail.legR],
+    ["Language",detail.language],["Dysarthria",detail.dysarthria],["Ataxia",detail.ataxia],["Sensory",detail.sensory],
+    ["Inattention (neglect)", detail.neglect]
+  ];
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <div className="text-sm font-semibold">Neurologic exam summary (NIHSS)</div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-3">
+        {rows.map(([k,v])=>(
+          <div key={k} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/50 px-2 py-1">
+            <span>{k}</span><span className="font-mono">{v}</span>
+          </div>
+        ))}
+        <div className="col-span-2 sm:col-span-3 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
+          <span>Total NIHSS</span><span className="font-mono font-bold">{detail.total}</span>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button onClick={()=>onChoose("non")} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-semibold hover:bg-slate-800">Non-disabling</button>
+        <button onClick={()=>onChoose("disabling")} className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-sm font-semibold text-emerald-200 hover:bg-emerald-900/60">Disabling</button>
+      </div>
+    </div>
+  );
+}
+
+const ConfirmDialog = ({ open, title, message, ok = "Confirm", cancel = "Cancel", onOK, onX }) =>
+  open ? (
+    <div className="fixed inset-0 z-[120] grid place-items-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onX} />
+      <div className="relative w-[min(96vw,480px)] rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+        <div className="text-base font-semibold">{title}</div>
+        <div className="mt-2 text-sm text-slate-300 whitespace-pre-wrap">{message}</div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onX} className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm">
+            {cancel}
+          </button>
+          <button
+            onClick={onOK}
+            className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-sm font-semibold text-emerald-200"
+          >
+            {ok}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+const OtherActionsDialog = ({ open, onX, onPick, s }) =>
+  open ? (
+    <div className="fixed inset-0 z-[120] grid place-items-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onX} />
+      <div className="relative w-[min(96vw,460px)] rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+        <div className="text-base font-semibold">Other actions</div>
+        <div className="mt-2 text-sm text-slate-300">Quick interventions:</div>
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          <button onClick={()=>onPick("nicardipine")} disabled={!!s.actions.nicardipine} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.nicardipine?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+            Administer nicardipine
+          </button>
+          <button onClick={()=>onPick("d50")} disabled={!!s.actions.d50} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.d50?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+            Administer D50
+          </button>
+          <button onClick={()=>onPick("intubate")} disabled={!!s.actions.intubated} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.intubated?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+            Intubate patient
+          </button>
+          <button onClick={()=>onPick("pcc")} disabled={!!s.actions.pcc} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.pcc?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+            Administer PCC
+          </button>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button onClick={onX} className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm">Close</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+/* =========================
+ * App
  * ========================= */
 function App(){
   const { toasts, push } = useToasts();
@@ -501,35 +741,35 @@ function App(){
   const [pendingCancel, setPendingCancel] = useState(false);
   const [showCitations, setShowCitations] = useState(false);
   const [showOther, setShowOther] = useState(false);
+  const [showExam, setShowExam] = useState(false);
 
   const addLog = (kind,text)=>setLog((l)=>[{id:uid(),kind,text,t:Date.now()},...l]);
 
   const reset = ()=>{
-    const c=generateCase(mode); setData(c); setLog([]); setRevealScore(false); setPendingAdmit(null);
+    const c=generateCase(mode); setData(c); setLog([]); setRevealScore(false); setPendingAdmit(null); setShowExam(false);
     push("New case ready","Mode: "+mode+". Start with an exam, then image appropriately.");
   };
   const askMode = (n)=>{ if(n!==mode) setPendingMode(n); };
-  const applyMode = (n)=>{ setMode(n); const c=generateCase(n); setData(c); setLog([]); setRevealScore(false); setPendingAdmit(null); push("Mode switched","Now in "+n+" mode. New case generated."); };
+  const applyMode = (n)=>{ setMode(n); const c=generateCase(n); setData(c); setLog([]); setRevealScore(false); setPendingAdmit(null); setShowExam(false); push("Mode switched","Now in "+n+" mode. New case generated."); };
 
   const commitAdmit = (admitTo) => {
     if (data.finished) { push("Case finished", "Start a new case to continue.", "warn"); return; }
     const s = { ...data, actions: { ...data.actions } };
 
-    // NEW: intubated patients MUST go to NeuroICU
+    // Intubated patients MUST go to NeuroICU
     if (s.actions.intubated && admitTo !== "nicu") {
       push("ICU required","Intubated patients require NeuroICU. Choose NeuroICU to proceed.", "warn", 5600);
       addLog("bad","Attempted floor admit for an intubated patient.");
       return;
     }
 
-    // Hemorrhage BP requirement
+    // Hemorrhage BP & PCC requirement
     if (admitTo === "nicu" && (s.type==="ICH"||s.type==="SAH"||s.type==="SDH")) {
       if (s.sbp >= 140 && !s.actions.nicardipine) {
         push("Start nicardipine first","Hemorrhage with SBP ≥140: administer nicardipine via Other actions before NeuroICU admit.", "warn", 5200);
         addLog("bad","Attempted ICU admit without BP management (hemorrhage).");
         return;
       }
-      // NEW: PCC requirement when DOAC involved
       if (s.doac && !s.actions.pcc) {
         push("Reverse DOAC first","Hemorrhage with recent DOAC: administer PCC via Other actions before NeuroICU admit.", "warn", 5600);
         addLog("bad","Attempted ICU admit without DOAC reversal (PCC).");
@@ -559,6 +799,13 @@ function App(){
 
   const commitCancel = ()=>{
     if (data.finished){ push("Case finished","Start a new case to continue.","warn"); setPendingCancel(false); return; }
+    // Hard stop: don't allow cancellation if NIHSS > 5
+    if (data.nihssDetail && data.nihssDetail.total > 5) {
+      push("Cannot cancel","NIHSS > 5 — code stroke must remain active.", "warn", 5600);
+      addLog("bad","Attempted cancellation with NIHSS > 5.");
+      setPendingCancel(false);
+      return;
+    }
     const s={...data, actions:{...data.actions, cancel:true}};
     const disabling = isDisablingDeficit(s.nihssDetail, s.dominantSide);
     const ok = isNonAcute(s) || (s.userClass!==null ? s.userClass==="non" : !disabling) || s.type==="Mimic";
@@ -577,7 +824,6 @@ function App(){
     if (k==="nicardipine"){
       if (s.actions.nicardipine){ push("Already given","Nicardipine already recorded.","warn"); }
       else {
-        // NEW: penalize if ischemic AND TNK scenario is not eligible (BP lowering not helpful)
         if (s.type==="Ischemic" && !tnkScenarioEligible(s)) {
           penalize(6,"BP lowering not indicated","Ischemic stroke without TNK path — avoid routine nicardipine unless otherwise required.");
         }
@@ -599,7 +845,20 @@ function App(){
       }
     } else if (k==="intubate"){
       if (s.actions.intubated){ push("Already intubated","Airway already secured.","warn"); }
-      else { s.actions.intubated=1; s.spo2=Math.max(s.spo2, 96); s.hr=Math.max(70, s.hr-15); push("Patient intubated","Airway secured. Oxygenation improved.","info"); addLog("info","Intubated patient."); }
+      else {
+        s.actions.intubated=1;
+        s.spo2=Math.max(s.spo2, 96);
+        s.hr=Math.max(70, s.hr-15);
+        if (s.requiresIntubation) {
+          push("Patient intubated","Airway secured. Oxygenation improved.","info");
+          addLog("good","Intubated patient with appropriate indication.");
+          s.score = Math.min(100, s.score + 4);
+        } else {
+          push("Intubation not indicated","No respiratory distress/instability documented.","warn");
+          addLog("bad","Inappropriate intubation.");
+          s.score = Math.max(0, s.score - 8);
+        }
+      }
     } else if (k==="pcc") {
       if (s.actions.pcc){ push("Already given","PCC already recorded.","warn"); }
       else {
@@ -632,6 +891,7 @@ function App(){
       case "examine":
         if (s.actions.examine){ penalize(2,"Already examined","Repeated action."); break; }
         s.actions.examine=1; reward(3,"Exam complete",`NIHSS ${s.nihssDetail.total}, glucose ${s.glucose} mg/dL. Please classify as disabling or non-disabling.`);
+        setShowExam(true);
         break;
       case "ctNonCon":
         if (s.actions.ctNonCon){ penalize(2,"CT repeated","Duplicate non-contrast CT."); break; }
@@ -689,10 +949,13 @@ function App(){
         if (s.type!=="Ischemic"){ penalize(40,"Contraindicated","Hemorrhage or mimic present. Do not administer TNK."); break; }
         if (!s.userClass){ penalize(5,"Classify first","Classify deficits as Disabling vs Non-disabling before TNK."); break; }
 
+        // Include blood thinners as a hard contraindication (yes/unknown)
+        const hasBloodThinnersContra = s.bloodThinners && s.bloodThinners !== "no";
+
         const withinWindow = (s.onsetType==="known" && minutesToHours(s.minutesSinceLKAW)<=4.5) ||
                              ((s.onsetType==="wake-up" || s.onsetType==="unknown") && s.actions.mri && !s.ctaOcclusion && s.mriMismatch);
 
-        const tnkOK = s.userClass==="disabling" && !s.doac && !s.recentGISurgery && !s.recentStroke30d &&
+        const tnkOK = s.userClass==="disabling" && !hasBloodThinnersContra && !s.doac && !s.recentGISurgery && !s.recentStroke30d &&
                       s.glucose>=60 && s.actions.ctNonCon && withinWindow &&
                       (s.sbp<=185 && s.dbp<=110);
 
@@ -756,6 +1019,7 @@ function App(){
                (val==="non" && !isDisablingDeficit(data.nihssDetail, data.dominantSide));
     setData((d)=>({...d, userClass:val, score: clamp(d.score + (ok?4:-5))}));
     push("Classification recorded","You chose " + (val==="disabling"?"Disabling":"Non-disabling") + ".", ok?"good":"warn");
+    setShowExam(false);
   };
 
   const disabledMap = (()=>{
@@ -773,13 +1037,23 @@ function App(){
     ? "Learning mode: fewer mimics and more intervention-eligible cases. Switching resets the current case. Continue?"
     : "Realistic mode: more mimics and contraindications. Switching resets the current case. Continue?";
 
+  const revealButton = data.finished ? (
+    <button
+      onClick={()=>{ if(!revealScore) setRevealScore(true); }}
+      disabled={false}
+      className="rounded-lg border border-violet-700 bg-violet-900/40 px-3 py-2 text-sm font-semibold text-violet-200 hover:bg-violet-900/60"
+    >
+      {revealScore ? `Grade ${gradeLetter(data.score)} — Score ${data.score}` : "Reveal Score"}
+    </button>
+  ) : null;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
       <Toasts items={toasts} />
 
       <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/70 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <h1 className="text-lg font-bold">🤖🧠 StrokeBot Simulator 7070 v0.51+++</h1>
+          <h1 className="text-lg font-bold">🤖🧠 StrokeBot Simulator 7070 v0.51+++++</h1>
           <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
             <span>Mode:</span>
             <div className="inline-flex items-center gap-2">
@@ -795,24 +1069,11 @@ function App(){
           <h2 className="text-base font-semibold">Case</h2>
           <pre className={"mt-2 whitespace-pre-wrap " + BLOCK + " p-3 text-sm leading-relaxed"}>{data.stem}</pre>
 
-          {data.actions.examine && data.userClass===null && <NIHSSSummary detail={data.nihssDetail} onChoose={chooseClass} />}
-
           <div className="mt-3 flex flex-wrap gap-2">
             <button onClick={reset} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60">New Case</button>
             <button onClick={()=>finishCase()} disabled={data.finished} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60">Finish Case</button>
-            {data.finished && (
-              <button onClick={()=>setRevealScore(v=>!v)} className="rounded-lg border border-violet-700 bg-violet-900/40 px-3 py-2 text-sm font-semibold text-violet-200 hover:bg-violet-900/60">
-                {revealScore ? "Hide Score" : "Reveal Score"}
-              </button>
-            )}
+            {revealButton}
           </div>
-
-          {data.finished && revealScore && (
-            <div className="mt-3 inline-flex items-center gap-3 rounded-2xl border border-violet-800 bg-violet-900/30 px-3 py-2 text-sm">
-              <span className="text-slate-300">Grade:</span>
-              <span className="text-xl font-extrabold text-violet-200">{gradeLetter(data.score)}</span>
-            </div>
-          )}
         </section>
 
         <section className={PANEL + " flex flex-col lg:row-span-2"}>
@@ -879,6 +1140,11 @@ function App(){
         onOK={commitCancel}
       />
 
+      {/* Examine modal */}
+      <SimpleModal open={showExam} title="Examination" onX={()=>setShowExam(false)}>
+        <NIHSSSummary detail={data.nihssDetail} onChoose={chooseClass} />
+      </SimpleModal>
+
       {/* Other actions dialog */}
       <OtherActionsDialog
         open={showOther}
@@ -889,90 +1155,6 @@ function App(){
     </div>
   );
 }
-
-/* =========================
- * NIHSS quick viewer (unchanged)
- * ========================= */
-function NIHSSSummary({ detail, onChoose }) {
-  if (!detail) return null;
-  const rows = [
-    ["Facial",detail.facial],["Gaze/Eyes",detail.gaze],["Visual fields",detail.visual],
-    ["Left arm",detail.armL],["Right arm",detail.armR],["Left leg",detail.legL],["Right leg",detail.legR],
-    ["Language",detail.language],["Dysarthria",detail.dysarthria],["Ataxia",detail.ataxia],["Sensory",detail.sensory]
-  ];
-  return (
-    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-      <div className="text-sm font-semibold">Neurologic exam summary (NIHSS)</div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-3">
-        {rows.map(([k,v])=>(
-          <div key={k} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/50 px-2 py-1">
-            <span>{k}</span><span className="font-mono">{v}</span>
-          </div>
-        ))}
-        <div className="col-span-2 sm:col-span-3 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
-          <span>Total NIHSS</span><span className="font-mono font-bold">{detail.total}</span>
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={()=>onChoose("non")} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-semibold hover:bg-slate-800">Non-disabling</button>
-        <button onClick={()=>onChoose("disabling")} className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-sm font-semibold text-emerald-200 hover:bg-emerald-900/60">Disabling</button>
-      </div>
-    </div>
-  );
-}
-
-/* =========================
- * Reusable dialogs
- * ========================= */
-const ConfirmDialog = ({ open, title, message, ok = "Confirm", cancel = "Cancel", onOK, onX }) =>
-  open ? (
-    <div className="fixed inset-0 z-[120] grid place-items-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onX} />
-      <div className="relative w-[min(96vw,480px)] rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
-        <div className="text-base font-semibold">{title}</div>
-        <div className="mt-2 text-sm text-slate-300 whitespace-pre-wrap">{message}</div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onX} className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm">
-            {cancel}
-          </button>
-          <button
-            onClick={onOK}
-            className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-sm font-semibold text-emerald-200"
-          >
-            {ok}
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-const OtherActionsDialog = ({ open, onX, onPick, s }) =>
-  open ? (
-    <div className="fixed inset-0 z-[120] grid place-items-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onX} />
-      <div className="relative w-[min(96vw,460px)] rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
-        <div className="text-base font-semibold">Other actions</div>
-        <div className="mt-2 text-sm text-slate-300">Quick interventions:</div>
-        <div className="mt-3 grid grid-cols-1 gap-2">
-          <button onClick={()=>onPick("nicardipine")} disabled={!!s.actions.nicardipine} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.nicardipine?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
-            Administer nicardipine
-          </button>
-          <button onClick={()=>onPick("d50")} disabled={!!s.actions.d50} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.d50?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
-            Administer D50
-          </button>
-          <button onClick={()=>onPick("intubate")} disabled={!!s.actions.intubated} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.intubated?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
-            Intubate patient
-          </button>
-          <button onClick={()=>onPick("pcc")} disabled={!!s.actions.pcc} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.pcc?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
-            Administer PCC
-          </button>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button onClick={onX} className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm">Close</button>
-        </div>
-      </div>
-    </div>
-  ) : null;
 
 /* =========================
  * Mount
