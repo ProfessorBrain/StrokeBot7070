@@ -445,9 +445,12 @@ if (doac) notes.push("recent DOAC ingestion within 48h");
   const mrs5 = baselineMrs===5 ? "\n" + activator + " reports the patient has severe baseline disability (mRS 5)." : "";
   const respLine = requiresIntubation ? "\nOn arrival, the patient is in obvious respiratory distress with hypoxia and poor airway protection." : "";
 
+  
+  \\ main prompt
+  
   const contextBrief = pickContextLine(activator, d);
   const respShort = requiresIntubation ? " Patient appears in respiratory distress." : "";
-  const stem = `${activator} brings a ${age}-year-old ${sex} ${extra || " acute neurologic symptoms"}. Last known well: ${lka}. Vitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%. Found/observed: ${contextBrief}. Blood thinners: ${bloodThinners.toUpperCase()}.` +
+  const stem = `${activator} brings a ${age}-year-old ${sex} ${extra || "acute neurologic symptoms"}. Last known well: ${lka}. Vitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%. Found/observed: ${contextBrief}. Blood thinners: ${bloodThinners.toUpperCase()}.` +
                `${notes.length ? " Notables: " + notes.join("; ") + "." : ""}` +
                `${respShort} You are at bedside with the team.`;
 
