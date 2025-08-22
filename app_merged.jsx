@@ -1,11 +1,5 @@
 
 /* StrokeBot Simulator 7070 — merged JSX (v0.51+++++)
-   Changes:
-   - Context lines now reflect NIHSS-consistent symptoms (no mismatched narratives).
-   - "Reveal Score" now reveals grade/score on the button itself; one-way (irreversible).
-   - Block cancelling code stroke if NIHSS > 5.
-   - New presentation datum: "On blood thinners" {yes 7%, unknown 5%, else no}; yes/unknown is a TNK contraindication.
-   - Kept prior rules: airway-first, D50 fix hypoglycemia, nicardipine penalties, PCC requirements, etc.
 */
 
 /* global React, ReactDOM */
@@ -453,7 +447,7 @@ if (doac) notes.push("recent DOAC ingestion within 48h");
 
   const contextBrief = pickContextLine(activator, d);
   const respShort = requiresIntubation ? " Patient appears in respiratory distress." : "";
-  const stem = `${activator} brings a ${age}-year-old ${sex} with${extra || " acute neurologic symptoms"}. Last known well: ${lka}. Vitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%. Found/observed: ${contextBrief}. Blood thinners: ${bloodThinners.toUpperCase()}.` +
+  const stem = `${activator} brings a ${age}-year-old ${sex} ${extra || " acute neurologic symptoms"}. Last known well: ${lka}. Vitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%. Found/observed: ${contextBrief}. Blood thinners: ${bloodThinners.toUpperCase()}.` +
                `${notes.length ? " Notables: " + notes.join("; ") + "." : ""}` +
                `${respShort} You are at bedside with the team.`;
 
