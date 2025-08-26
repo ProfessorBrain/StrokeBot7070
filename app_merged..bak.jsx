@@ -449,8 +449,7 @@ if (doac) notes.push("recent DOAC ingestion within 48h");
 
   const contextBrief = pickContextLine(activator, d);
   const respShort = requiresIntubation ? " Patient appears in respiratory distress." : "";
-  const activatorPhrase = activator === "Inpatient staff" ? "Inpatient staff activates code stroke for" : `${activator} brings`;
-  const stem = `${activatorPhrase} a ${age}-year-old ${sex} with${extra || " acute neurologic symptoms"}. Last known well: ${lka}. Vitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%. Found/observed: ${contextBrief}. Blood thinners: ${bloodThinners.toUpperCase()}.` +
+  const stem = `${activator} brings a ${age}-year-old ${sex} with${extra || " acute neurologic symptoms"}. Last known well: ${lka}. Vitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%. Found/observed: ${contextBrief}. Blood thinners: ${bloodThinners.toUpperCase()}.` +
                `${notes.length ? " Notables: " + notes.join("; ") + "." : ""}` +
                `${respShort} You are at bedside with the team.`;
 
