@@ -1,11 +1,7 @@
 
-/* StrokeBot Simulator 7070 — merged JSX (v0.51+++++)
+/* StrokeBotStrokeBot.me - Acute Stroke Simulator 
    Changes:
-   - Context lines now reflect NIHSS-consistent symptoms (no mismatched narratives).
-   - "Reveal Score" now reveals grade/score on the button itself; one-way (irreversible).
-   - Block cancelling code stroke if NIHSS > 5.
-   - New presentation datum: "On blood thinners" {yes 7%, unknown 5%, else no}; yes/unknown is a TNK contraindication.
-   - Kept prior rules: airway-first, D50 fix hypoglycemia, nicardipine penalties, PCC requirements, etc.
+   - WIP manual
 */
 
 /* global React, ReactDOM */
@@ -1053,7 +1049,7 @@ function App(){
 
       <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/70 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <h1 className="text-lg font-bold">🤖🧠 StrokeBot Simulator 7070 v0.515</h1>
+          <h1 className="text-lg font-bold">🤖🧠 StrokeBot.me - Acute Stroke Simulator v0.6</h1>
           <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
             <span>Mode:</span>
             <div className="inline-flex items-center gap-2">
