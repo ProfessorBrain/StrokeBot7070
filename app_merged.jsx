@@ -1,5 +1,5 @@
 
-/* StrokeBotStrokeBot.me - Acute Stroke Simulator 
+/* StrokeBot.me - Acute Stroke Simulator 
    Changes:
    - WIP manual
 */
@@ -425,7 +425,7 @@ function generateCase(mode="learning"){
   const d = nihssDetail;
   const symptomParts = buildSymptomFromNIHSS(d, affectedSide);
   const symptomHint = symptomParts.slice(0,2).join(" and ");
-  const extra = symptomHint ? " for deficits of " + symptomHint : "";
+  const extra = symptomHint ? " deficits of " + symptomHint : "";
 
   const lka = onsetType==="known" ? (Math.round(minutesToHours(minutesSinceLKAW)*10)/10 + " hours ago")
              : onsetType==="wake-up" ? "wake-up stroke (unknown exact time)" : "unknown";
