@@ -922,14 +922,12 @@ function App(){
         if (s.actions.cta){ penalize(2,"CTA repeated","Duplicate CTA."); break; }
         if (!s.actions.ctNonCon) penalize(5,"Out of sequence","Perform non-contrast CT before CTA.");
         s.actions.cta=1;
-        if (s.userClass === "non") { penalize(4,"CTA not indicated","CTA not indicated for non-disabling deficits."); break; }
         if (s.type!=="Ischemic"){ penalize(4,"CTA low yield","Primary hemorrhage or mimic - CTA rarely helpful."); }
         else if (s.ctaOcclusion){ reward(6,"CTA result","Occlusion: "+s.ctaOcclusion+"."); const h=minutesToHours(s.minutesSinceLKAW); if (h>6 && s.ctaOcclusion==="MCA - distal M2") push("Consider CTP",">6h LKAW and distal M2 - obtain CTP to guide EVT (large territory or favorable ratio).","info",4600); }
         else { reward(4,"CTA result","No proximal occlusion identified."); }
         break;
       case "ctp": {
-        if (s.userClass === "non") { penalize(4,"CTP not indicated","CT perfusion not indicated for non-disabling deficits."); break; }
-                const h=minutesToHours(s.minutesSinceLKAW);
+        const h=minutesToHours(s.minutesSinceLKAW);
         if (h<6){ penalize(6,"Too early for CTP","CT perfusion should not be obtained prior to 6 hours from LKAW."); break; }
         if (s.actions.ctp){ penalize(2,"CTP repeated","Duplicate perfusion imaging."); break; }
         if (!s.actions.ctNonCon) penalize(4,"Out of sequence","Perform non-contrast CT first.");
@@ -946,7 +944,6 @@ function App(){
       }
       case "mri":
         if (s.actions.mri){ penalize(2,"MRI repeated","Duplicate MRI."); break; }
-                if (s.userClass === "non") { penalize(4,"MRI not indicated","Hyperacute MRI not indicated for non-disabling deficits."); break; }
         if (!(s && s.type==="Ischemic" && s.actions.ctNonCon && s.actions.cta && s.userClass==="disabling" &&
               ((s.onsetType==="wake-up" && (!s.ctaOcclusion ||
                  (s.ctaOcclusion==="MCA - distal M2" ? !(minutesToHours(s.minutesSinceLKAW)<=6 || !s.actions.ctp || s.ischemicVolume>100 || s.perfMismatch)
