@@ -1,5 +1,5 @@
 
-/* StrokeBotStrokeBot.me - Acute Stroke Simulator 
+/* StrokeBot.me - Acute Stroke Simulator 
    Changes:
    - WIP manual
 */
@@ -627,27 +627,6 @@ const CitationsModal = ({ open, onX }) => {
   );
 };
 
-const VersionModal = ({ open, onX }) => {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[130] grid place-items-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onX} />
-      <div className="relative w-[min(96vw,560px)] max-h-[80vh] overflow-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
-        <button onClick={onX} className="absolute right-2 top-2 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300">
-          ✕
-        </button>
-        <h3 className="text-base font-semibold pr-8">version 0.6</h3>
-        <div className="mt-2 text-sm text-slate-200">
-          <ul className="list-disc pl-5">
-            <li>initial release!</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
 /* =========================
  * Modals
  * ========================= */
@@ -757,7 +736,6 @@ function App(){
   const [pendingMode, setPendingMode] = useState(null);
   const [pendingCancel, setPendingCancel] = useState(false);
   const [showCitations, setShowCitations] = useState(false);
-  const [showVersion, setShowVersion] = useState(false);
   const [showOther, setShowOther] = useState(false);
   const [showExam, setShowExam] = useState(false);
 
@@ -1120,12 +1098,11 @@ function App(){
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <span>designed by micah etter, md</span><span>•</span>
           <span>educational use only</span><span>•</span>
-          <button onClick={()=>setShowVersion(true)} className="underline hover:text-slate-300">version 0.6</button><span>•</span><button onClick={()=>setShowCitations(true)} className="underline hover:text-slate-300">citations</button>
+          <button onClick={()=>setShowCitations(true)} className="underline hover:text-slate-300">citations</button>
         </div>
       </footer>
 
       <CitationsModal open={showCitations} onX={()=>setShowCitations(false)} />
-      <VersionModal open={showVersion} onX={()=>setShowVersion(false)} />
 
       {/* Admission dialog */}
       <ConfirmDialog
