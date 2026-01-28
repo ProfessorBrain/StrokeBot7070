@@ -150,51 +150,6 @@ const gradeLetter = (score) =>
   score >= 67 ? "D+" :
   score >= 60 ? "D" : "F";
 
-/* =========================
- * Disposition helpers
- * ========================= */
-
-function getRecommendedDisposition(caseState){
-  // Returns: { rec: "nicu"|"floor"|"either", reason: string }
-  if (!caseState) return { rec: "floor", reason: "No case data" };
-
-  const type = caseState.type;
-  const occl = (caseState.ctaOcclusion || "").toLowerCase();
-  const nihss = (caseState.nihssDetail && typeof caseState.nihssDetail.total === "number") ? caseState.nihssDetail.total : 0;
-  const intubated = !!(caseState.actions && caseState.actions.intubated);
-  const requiresIntubation = !!caseState.requiresIntubation;
-
-  // Hard ICU triggers
-  if (intubated || requiresIntubation) return { rec: "nicu", reason: "Airway/respiratory support" };
-  if (type === "ICH" || type === "SAH" || type === "SDH") return { rec: "nicu", reason: "Intracranial hemorrhage monitoring and BP/airway management" };
-
-  // Mimics generally do not require NeuroICU
-  if (type === "Mimic") return { rec: "floor", reason: "Stroke mimic without neurocritical care needs" };
-
-  // Ischemic stroke disposition rules (simulation-grade)
-  if (type === "Ischemic") {
-    // UI treats ICA/M1 as "either"
-    if (occl.includes("ica") || occl.includes("m1")) {
-      return { rec: "either", reason: "Large vessel occlusion (ICA/M1) — either disposition acceptable in this simulator" };
-    }
-
-    // Severe deficits -> ICU
-    if (nihss >= 15) return { rec: "nicu", reason: "Severe neurologic deficit (NIHSS ≥15)" };
-
-    // Otherwise floor
-    return { rec: "floor", reason: "Stable ischemic stroke presentation" };
-  }
-
-  // Fallback
-  return { rec: "floor", reason: "Default disposition" };
-}
-
-function isAdmitAppropriate(caseState, admitTo){
-  const { rec } = getRecommendedDisposition(caseState);
-  if (rec === "either") return true;
-  return admitTo === rec;
-}
-
 const randomBaselineMrs = () => {
   const randomRoll = Math.random() * 100;
   return randomRoll < 63 ? 0 :
@@ -630,34 +585,17 @@ if (doac) notes.push("recent DOAC ingestion within 48h");
  * ========================= */
 
 function tnkScenarioEligible(caseState){
-  // Simulator uses: caseState.type, onsetType, minutesSinceLKAW, sbp/dbp, glucose, doac, actions.ctp/actions.mri
-  if (!caseState) return false;
-  if (caseState.type !== "Ischemic") return false;
+  if (!caseState || caseState.type==="mimic") return false;
+  if (caseState.type==="ICH") return false;
 
-  const hours = minutesToHours(caseState.minutesSinceLKAW);
-  if (hours > 4.5) return false;
+  const hoursSinceLastKnownWell = minutesToHours(caseState.minutesSinceLKAW);
+  if (hoursSinceLastKnownWell > 4.5) return false;
 
-  // Anticoagulant exclusion (simplified)
-  if (caseState.doac) return false;
+  if (caseState.onDOAC || caseState.onWarfarin) return false;
+  if (caseState.vitals.sbp > 185 || caseState.vitals.dbp > 110) return false;
+  if (caseState.glucose < 50) return false;
 
-  const sbp = (typeof caseState.sbp === "number")
-    ? caseState.sbp
-    : (caseState.vitals && typeof caseState.vitals.sbp === "number" ? caseState.vitals.sbp : 0);
-  const dbp = (typeof caseState.dbp === "number")
-    ? caseState.dbp
-    : (caseState.vitals && typeof caseState.vitals.dbp === "number" ? caseState.vitals.dbp : 0);
-
-  if (sbp > 185 || dbp > 110) return false;
-
-  const glucose = (typeof caseState.glucose === "number") ? caseState.glucose : 0;
-  if (glucose < 50) return false;
-
-  // Wake-up/unknown often require advanced imaging; allow if CTP or MRI obtained.
-  if (caseState.onsetType === "wake-up" || caseState.onsetType === "unknown") {
-    const hasAdvancedImaging = !!(caseState.actions && (caseState.actions.ctp || caseState.actions.mri));
-    if (!hasAdvancedImaging) return false;
-  }
-
+  if (caseState.lastKnownWellType === "wake-up stroke" && !caseState.advancedImagingAvailable) return false;
   return true;
 }
 
@@ -1085,7 +1023,7 @@ function App(){
         push("Recommended disposition", `Recommend ${recLabel} (${reason}).`, "warn", 5200);
       }
     }
-    finishCase(updatedCaseStateForDisposition);
+    finishCase(caseState);
   };
 
   const commitCancel = ()=>{
@@ -1114,7 +1052,7 @@ function App(){
     if (otherActionKey==="nicardipine"){
       if (workingCaseStateForOtherAction.actions.nicardipine){ push("Already given","Nicardipine already recorded.","warn"); }
       else {
-        if (workingCaseStateForOtherAction.type==="Ischemic" && !tnkScenarioEligible(workingCaseStateForOtherAction)) {
+        if (workingCaseStateForOtherAction.type==="Ischemic" && !tnkScenarioEligible(s)) {
           penalize(6,"BP lowering not indicated","Ischemic stroke without TNK path — avoid routine nicardipine unless otherwise required.");
         }
         workingCaseStateForOtherAction.actions.nicardipine=1;

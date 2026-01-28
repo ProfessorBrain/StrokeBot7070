@@ -53,11 +53,11 @@ const BLOCK = "rounded-xl border border-slate-800 bg-slate-950/70 text-slate-100
 
 // Button class presets (centralized to avoid duplicated Tailwind strings)
 const BUTTON = {
-  base: "w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 bg-slate-950/40 border-slate-800 hover:bg-slate-950/60 hover:border-slate-700",
-  neutral: "text-slate-100",
-  green: "border-emerald-700/60 bg-emerald-950/20 hover:bg-emerald-950/30 hover:border-emerald-500/70 text-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.18)]",
-  blue: "border-sky-700/60 bg-sky-950/20 hover:bg-sky-950/30 hover:border-sky-500/70 text-sky-200 shadow-[0_0_0_1px_rgba(14,165,233,0.18)]",
-  danger: "border-rose-700/70 bg-rose-950/30 hover:bg-rose-950/45 hover:border-rose-500/80 text-rose-100 shadow-[0_0_0_1px_rgba(244,63,94,0.20)]",
+  base: "w-full rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-left text-sm font-semibold text-slate-100 transition hover:border-slate-700 hover:bg-slate-950/65 disabled:cursor-not-allowed disabled:opacity-50",
+  neutral: "",
+  green: "ring-1 ring-emerald-700/40",
+  blue: "ring-1 ring-sky-700/40",
+  danger: "ring-1 ring-rose-700/50",
   alignLeft: "items-start",
   alignCenter: "text-center",
 };
@@ -149,51 +149,6 @@ const gradeLetter = (score) =>
   score >= 70 ? "C" :
   score >= 67 ? "D+" :
   score >= 60 ? "D" : "F";
-
-/* =========================
- * Disposition helpers
- * ========================= */
-
-function getRecommendedDisposition(caseState){
-  // Returns: { rec: "nicu"|"floor"|"either", reason: string }
-  if (!caseState) return { rec: "floor", reason: "No case data" };
-
-  const type = caseState.type;
-  const occl = (caseState.ctaOcclusion || "").toLowerCase();
-  const nihss = (caseState.nihssDetail && typeof caseState.nihssDetail.total === "number") ? caseState.nihssDetail.total : 0;
-  const intubated = !!(caseState.actions && caseState.actions.intubated);
-  const requiresIntubation = !!caseState.requiresIntubation;
-
-  // Hard ICU triggers
-  if (intubated || requiresIntubation) return { rec: "nicu", reason: "Airway/respiratory support" };
-  if (type === "ICH" || type === "SAH" || type === "SDH") return { rec: "nicu", reason: "Intracranial hemorrhage monitoring and BP/airway management" };
-
-  // Mimics generally do not require NeuroICU
-  if (type === "Mimic") return { rec: "floor", reason: "Stroke mimic without neurocritical care needs" };
-
-  // Ischemic stroke disposition rules (simulation-grade)
-  if (type === "Ischemic") {
-    // UI treats ICA/M1 as "either"
-    if (occl.includes("ica") || occl.includes("m1")) {
-      return { rec: "either", reason: "Large vessel occlusion (ICA/M1) — either disposition acceptable in this simulator" };
-    }
-
-    // Severe deficits -> ICU
-    if (nihss >= 15) return { rec: "nicu", reason: "Severe neurologic deficit (NIHSS ≥15)" };
-
-    // Otherwise floor
-    return { rec: "floor", reason: "Stable ischemic stroke presentation" };
-  }
-
-  // Fallback
-  return { rec: "floor", reason: "Default disposition" };
-}
-
-function isAdmitAppropriate(caseState, admitTo){
-  const { rec } = getRecommendedDisposition(caseState);
-  if (rec === "either") return true;
-  return admitTo === rec;
-}
 
 const randomBaselineMrs = () => {
   const randomRoll = Math.random() * 100;
@@ -296,61 +251,6 @@ function calcNIHSS({ type, affectedSide, dominantSide, site, mimicBias = null })
 
   const total = loc+facial+gaze+visual+armL+armR+legL+legR+language+dysarthria+ataxia+sensory+neglect;
   return { loc, facial, gaze, visual, armL, armR, legL, legR, language, dysarthria, ataxia, sensory, neglect, total };
-}
-
-/**
- * ASPECTS calculator (simulation-grade).
- * - Returns { score: number|null, note: string }
- * - ASPECTS applies to anterior circulation ischemic stroke; for posterior circulation, returns null.
- */
-function calcASPECTS(onsetType, minutesSinceLKAW, ctaOcclusion, caseType){
-  // Mimics: treat as no early ischemic change.
-  if (caseType === "Mimic") return { score: 10, note: "Mimic/no early ischemic change" };
-
-  // Non-ischemic: ASPECTS not applicable.
-  if (caseType !== "Ischemic") return { score: null, note: "Not applicable" };
-
-  const occl = (ctaOcclusion || "").toLowerCase();
-
-  // Posterior circulation (or explicitly PCA/basilar): ASPECTS not applicable.
-  if (occl.includes("basilar") || occl.includes("pca")) {
-    return { score: null, note: "Posterior circulation" };
-  }
-
-  const hours = Math.max(0, (Number(minutesSinceLKAW) || 0) / 60);
-
-  // Base severity penalty by occlusion site (higher = worse)
-  let baseSeverityPenalty = 0.8; // default mild/no LVO
-  if (!ctaOcclusion) baseSeverityPenalty = 0.6; // no occlusion seen
-  else if (occl.includes("ica")) baseSeverityPenalty = 2.8;
-  else if (occl.includes("m1")) baseSeverityPenalty = 2.4;
-  else if (occl.includes("proximal m2")) baseSeverityPenalty = 1.9;
-  else if (occl.includes("distal m2")) baseSeverityPenalty = 1.5;
-  else if (occl.includes("m3") || occl.includes("m4")) baseSeverityPenalty = 0.9;
-  else if (occl.includes("aca")) baseSeverityPenalty = 1.0;
-
-  // Scale severity impact by time (early CT may look better despite severe occlusion)
-  const timeScale = 0.35 + 0.65 * Math.min(1, hours / 6); // 0.35 at time 0, -> 1.0 by 6h
-  const severityPenalty = baseSeverityPenalty * timeScale;
-
-  // Time penalty (monotonic; rough)
-  let timePenalty = 0;
-  if (hours <= 1) timePenalty = 0;
-  else if (hours <= 3) timePenalty = 0.4;
-  else if (hours <= 6) timePenalty = 0.9;
-  else if (hours <= 12) timePenalty = 1.6;
-  else timePenalty = 2.3;
-
-  // Unknown/wake-up imaging often occurs later and/or with more established changes.
-  const onsetPenalty = (onsetType === "known") ? 0 : 0.3;
-
-  // Small stochasticity to keep cases from feeling identical.
-  const noise = (Math.random() - 0.5) * 0.8; // [-0.4, +0.4]
-
-  const raw = 10 - severityPenalty - timePenalty - onsetPenalty + noise;
-  const score = Math.max(0, Math.min(10, Math.round(raw)));
-
-  return { score, note: "Simulated ASPECTS" };
 }
 
 const isDisablingDeficit = (nihssDetails, dominantSide) => {
@@ -630,34 +530,17 @@ if (doac) notes.push("recent DOAC ingestion within 48h");
  * ========================= */
 
 function tnkScenarioEligible(caseState){
-  // Simulator uses: caseState.type, onsetType, minutesSinceLKAW, sbp/dbp, glucose, doac, actions.ctp/actions.mri
-  if (!caseState) return false;
-  if (caseState.type !== "Ischemic") return false;
+  if (!caseState || caseState.type==="mimic") return false;
+  if (caseState.type==="ICH") return false;
 
-  const hours = minutesToHours(caseState.minutesSinceLKAW);
-  if (hours > 4.5) return false;
+  const hoursSinceLastKnownWell = minutesToHours(caseState.minutesSinceLKAW);
+  if (hoursSinceLastKnownWell > 4.5) return false;
 
-  // Anticoagulant exclusion (simplified)
-  if (caseState.doac) return false;
+  if (caseState.onDOAC || caseState.onWarfarin) return false;
+  if (caseState.vitals.sbp > 185 || caseState.vitals.dbp > 110) return false;
+  if (caseState.glucose < 50) return false;
 
-  const sbp = (typeof caseState.sbp === "number")
-    ? caseState.sbp
-    : (caseState.vitals && typeof caseState.vitals.sbp === "number" ? caseState.vitals.sbp : 0);
-  const dbp = (typeof caseState.dbp === "number")
-    ? caseState.dbp
-    : (caseState.vitals && typeof caseState.vitals.dbp === "number" ? caseState.vitals.dbp : 0);
-
-  if (sbp > 185 || dbp > 110) return false;
-
-  const glucose = (typeof caseState.glucose === "number") ? caseState.glucose : 0;
-  if (glucose < 50) return false;
-
-  // Wake-up/unknown often require advanced imaging; allow if CTP or MRI obtained.
-  if (caseState.onsetType === "wake-up" || caseState.onsetType === "unknown") {
-    const hasAdvancedImaging = !!(caseState.actions && (caseState.actions.ctp || caseState.actions.mri));
-    if (!hasAdvancedImaging) return false;
-  }
-
+  if (caseState.lastKnownWellType === "wake-up stroke" && !caseState.advancedImagingAvailable) return false;
   return true;
 }
 
@@ -892,80 +775,61 @@ const SimpleModal=({open,title,onX,children,widthClass="w-[min(96vw,520px)]"})=>
   </div>
 ):null;
 
-
-// Exam classification options (used in NIHSSSummary)
-const CLASSES = [
-  { key: "disabling", label: "Disabling deficit" },
-  { key: "non", label: "Non-disabling deficit" },
-];
-
 function NIHSSSummary({ detail, onChoose }){
-  if (!detail) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-black/30 p-4 text-sm text-slate-300">
-        No examination data available.
-      </div>
-    );
-  }
+  if (!detail) return null;
 
-  const scoreOrZero = (maybeNumber) => (Number.isFinite(maybeNumber) ? maybeNumber : 0);
-
-  const nihssTiles = [
-    { label: "LOC", value: scoreOrZero(detail.loc) },
-    { label: "Facial", value: scoreOrZero(detail.facial) },
-    { label: "Gaze/Eyes", value: scoreOrZero(detail.gaze) },
-
-    { label: "Visual fields", value: scoreOrZero(detail.visual) },
-    { label: "Left arm", value: scoreOrZero(detail.armL) },
-    { label: "Right arm", value: scoreOrZero(detail.armR) },
-
-    { label: "Left leg", value: scoreOrZero(detail.legL) },
-    { label: "Right leg", value: scoreOrZero(detail.legR) },
-    { label: "Language", value: scoreOrZero(detail.language) },
-
-    { label: "Dysarthria", value: scoreOrZero(detail.dysarthria) },
-    { label: "Ataxia", value: scoreOrZero(detail.ataxia) },
-    { label: "Sensory", value: scoreOrZero(detail.sensory) },
-
-    { label: "Inattention (neglect)", value: scoreOrZero(detail.neglect), span: 1 },
+  const isDisabling = detail.isDisablingDeficit;
+  const rows = [
+    ["LOC", `${detail.loc}/7`],
+    ["Visual", `${detail.visual}/3`],
+    ["Face", `${detail.facial}/3`],
+    ["Motor (arm)", `${detail.motorArm}/8`],
+    ["Motor (leg)", `${detail.motorLeg}/8`],
+    ["Ataxia", `${detail.ataxia}/2`],
+    ["Sensation", `${detail.sensation}/2`],
+    ["Language", `${detail.language}/3`],
+    ["Dysarthria", `${detail.dysarthria}/2`],
+    ["Neglect", `${detail.neglect}/2`],
   ];
 
-  const totalNihss = scoreOrZero(detail.total);
-
   return (
-    <div className="rounded-2xl border border-slate-800 bg-black/25 p-4">
-      <div className="text-sm font-semibold text-slate-100">Neurologic exam summary (NIHSS)</div>
-
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {nihssTiles.map((tile)=>(
-          <div
-            key={tile.label}
-            className="flex items-center justify-between rounded-xl border border-slate-800 bg-black/30 px-3 py-2"
-          >
-            <span className="text-xs text-slate-300">{tile.label}</span>
-            <span className="text-sm font-semibold text-slate-100 tabular-nums">{tile.value}</span>
+    <div className="rounded-2xl border border-slate-800 bg-black/30 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">NIHSS estimate</div>
+          <div className="mt-1 text-xs text-slate-400">
+            This is a generated deficit pattern, not a real exam. Total score is approximate.
           </div>
-        ))}
-
-        <div className="col-span-3 flex items-center justify-between rounded-xl border border-slate-800 bg-black/30 px-3 py-2">
-          <span className="text-xs text-slate-300">Total NIHSS</span>
-          <span className="text-sm font-semibold text-slate-100 tabular-nums">{totalNihss}</span>
+          <div className="mt-2 text-xs">
+            <Tag kind={isDisabling ? "warn" : "good"}>{isDisabling ? "Disabling deficit pattern" : "Non-disabling pattern"}</Tag>
+          </div>
+        </div>
+        <div className="flex-shrink-0 rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-center">
+          <div className="text-[10px] uppercase tracking-wide text-slate-400">Total</div>
+          <div className="text-3xl font-black">{detail.total}</div>
         </div>
       </div>
 
-      <div className="mt-4 flex gap-2">
-        <button
-          onClick={()=>onChoose("non")}
-          className="flex-1 rounded-xl border border-slate-700 bg-black/30 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-500"
-        >
-          Non-disabling
-        </button>
-        <button
-          onClick={()=>onChoose("disabling")}
-          className="flex-1 rounded-xl border border-emerald-600 bg-emerald-900/30 px-4 py-2 text-sm font-semibold text-emerald-100 hover:border-emerald-400"
-        >
-          Disabling
-        </button>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        {rows.map(([rowLabel, rowValue])=>(
+          <div key={rowLabel} className="flex items-center justify-between rounded-lg border border-slate-800 bg-black/30 px-2 py-1">
+            <span className="text-slate-300">{rowLabel}</span>
+            <span className="font-mono">{rowValue}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {CLASSES.map((classOption)=>(
+          <button
+            key={classOption.key}
+            onClick={()=>onChoose(classOption.key)}
+            className="rounded-xl border border-slate-800 bg-black/30 px-3 py-2 text-xs hover:border-slate-600"
+          >
+            <div className="font-semibold">{classOption.label}</div>
+            <div className="mt-0.5 text-[10px] text-slate-400">{classOption.help}</div>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1085,7 +949,7 @@ function App(){
         push("Recommended disposition", `Recommend ${recLabel} (${reason}).`, "warn", 5200);
       }
     }
-    finishCase(updatedCaseStateForDisposition);
+    finishCase(caseState);
   };
 
   const commitCancel = ()=>{
@@ -1114,7 +978,7 @@ function App(){
     if (otherActionKey==="nicardipine"){
       if (workingCaseStateForOtherAction.actions.nicardipine){ push("Already given","Nicardipine already recorded.","warn"); }
       else {
-        if (workingCaseStateForOtherAction.type==="Ischemic" && !tnkScenarioEligible(workingCaseStateForOtherAction)) {
+        if (workingCaseStateForOtherAction.type==="Ischemic" && !tnkScenarioEligible(s)) {
           penalize(6,"BP lowering not indicated","Ischemic stroke without TNK path — avoid routine nicardipine unless otherwise required.");
         }
         workingCaseStateForOtherAction.actions.nicardipine=1;
@@ -1521,7 +1385,7 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
       />
 
       {/* Examine modal */}
-      <SimpleModal open={showExam} title="Examination" onX={()=>setShowExam(false)} widthClass="w-[min(96vw,720px)]">
+      <SimpleModal open={showExam} title="Examination" onX={()=>setShowExam(false)}>
         <NIHSSSummary detail={data.nihssDetail} onChoose={chooseClass} />
       </SimpleModal>
 

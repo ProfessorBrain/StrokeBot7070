@@ -20,7 +20,6 @@
     <!-- App (merged from app_merged.jsx) -->
     <script type="text/babel" data-presets="react">
 
-
 /* StrokeBotStrokeBot.me - Acute Stroke Simulator 
    Changes:
    - WIP manual
@@ -38,8 +37,8 @@ const uid = () => {
   try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch {}
   return Math.random().toString(36).slice(2) + Date.now();
 };
-const minutesToHours = (minutesValue) => minutesValue / 60;
-const clamp = (valueToClamp, maximumValue = 100) => Math.max(0, Math.min(maximumValue, valueToClamp));
+const minutesToHours = (m) => m / 60;
+const clamp = (x, n = 100) => Math.max(0, Math.min(n, x));
 
 // UI memory caps (avoid unbounded growth during long sessions)
 const MAX_LOG_ITEMS = 160;
@@ -53,11 +52,11 @@ const BLOCK = "rounded-xl border border-slate-800 bg-slate-950/70 text-slate-100
 
 // Button class presets (centralized to avoid duplicated Tailwind strings)
 const BUTTON = {
-  base: "w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 bg-slate-950/40 border-slate-800 hover:bg-slate-950/60 hover:border-slate-700",
-  neutral: "text-slate-100",
-  green: "border-emerald-700/60 bg-emerald-950/20 hover:bg-emerald-950/30 hover:border-emerald-500/70 text-emerald-200 shadow-[0_0_0_1px_rgba(16,185,129,0.18)]",
-  blue: "border-sky-700/60 bg-sky-950/20 hover:bg-sky-950/30 hover:border-sky-500/70 text-sky-200 shadow-[0_0_0_1px_rgba(14,165,233,0.18)]",
-  danger: "border-rose-700/70 bg-rose-950/30 hover:bg-rose-950/45 hover:border-rose-500/80 text-rose-100 shadow-[0_0_0_1px_rgba(244,63,94,0.20)]",
+  base: "w-full rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-left text-sm font-semibold text-slate-100 transition hover:border-slate-700 hover:bg-slate-950/65 disabled:cursor-not-allowed disabled:opacity-50",
+  neutral: "",
+  green: "ring-1 ring-emerald-700/40",
+  blue: "ring-1 ring-sky-700/40",
+  danger: "ring-1 ring-rose-700/50",
   alignLeft: "items-start",
   alignCenter: "text-center",
 };
@@ -66,31 +65,30 @@ const BUTTON = {
  * ========================= */
 function useToasts(){
   const [toasts, setToasts] = useState([]);
-  const toastTimersRef = useRef(new Map());
+  const timersRef = useRef(new Map());
 
-  const remove = useCallback((toastId)=>{
-    setToasts((previousToastItems)=>previousToastItems.filter((toastItem)=>toastItem.toastId!==toastId));
-    const toastTimers = toastTimersRef.current;
-    const timerHandle = toastTimers.get(toastId);
-    if (timerHandle) { clearTimeout(timerHandle); toastTimers.delete(toastId); }
+  const remove = useCallback((id)=>{
+    setToasts((t)=>t.filter((x)=>x.id!==id));
+    const timers = timersRef.current;
+    const handle = timers.get(id);
+    if (handle) { clearTimeout(handle); timers.delete(id); }
   }, []);
 
-  const push = useCallback((title, message, kind="info", displayMilliseconds=4200)=>{
-    const toastId = uid();
-    setToasts((previousToastItems)=>[{ toastId, title, message, kind }, ...previousToastItems].slice(0, MAX_TOASTS));
-    if (displayMilliseconds && displayMilliseconds > 0){
-      const timerHandle = setTimeout(()=>remove(toastId), displayMilliseconds);
-      toastTimersRef.current.set(toastId, timerHandle);
+  const push = useCallback((title, message, kind="info", ms=4200)=>{
+    const id = uid();
+    setToasts((t)=>[{ id, title, message, kind }, ...t].slice(0, MAX_TOASTS));
+    if (ms && ms > 0){
+      const handle = setTimeout(()=>remove(id), ms);
+      timersRef.current.set(id, handle);
     }
+    return id;
   }, [remove]);
 
   useEffect(()=>{
+    // Cleanup timers on unmount
     return ()=>{
-      const toastTimers = toastTimersRef.current;
-      for (const timerHandle of toastTimers.values()){
-        clearTimeout(timerHandle);
-      }
-      toastTimers.clear();
+      for (const handle of timersRef.current.values()) clearTimeout(handle);
+      timersRef.current.clear();
     };
   }, []);
 
@@ -109,15 +107,15 @@ function Toasts({ items, onClose }){
 
   return (
     <div className="fixed right-3 top-3 z-50 w-[min(96vw,420px)] space-y-2">
-      {items.map((toastItem) =>(
-        <div key={toastItem.toastId} className={"rounded-xl border px-3 py-2 shadow-xl " + cls(toastItem.kind)}>
+      {items.map((t)=>(
+        <div key={t.id} className={"rounded-xl border px-3 py-2 shadow-xl " + cls(t.kind)}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm font-semibold">{toastItem.title}</div>
-              <div className="mt-0.5 text-xs text-white/80 whitespace-pre-wrap">{toastItem.message}</div>
+              <div className="text-sm font-semibold">{t.title}</div>
+              <div className="mt-0.5 text-xs text-white/80 whitespace-pre-wrap">{t.message}</div>
             </div>
             <button
-              onClick={()=>onClose(toastItem.toastId)}
+              onClick={()=>onClose(t.id)}
               className="shrink-0 rounded-lg border border-white/10 bg-white/10 px-2 py-1 text-xs hover:bg-white/15"
               aria-label="Close notification"
               title="Close"
@@ -138,7 +136,7 @@ function Toasts({ items, onClose }){
 const EVT_SITES = ["ICA", "MCA - M1", "MCA - proximal M2", "MCA - distal M2", "Basilar artery"];
 const NON_EVT_SITES = ["ACA - A1", "ACA - A2", "PCA - P1", "PCA - P2", "MCA - M3", "MCA - M4"];
 
-const isNonAcute = (caseState) => (caseState.onsetType === "unknown" ? true : minutesToHours(caseState.minutesSinceLKAW) > 24);
+const isNonAcute = (s) => (s.onsetType === "unknown" ? 1 : minutesToHours(s.minutesSinceLKAW) > 24);
 const gradeLetter = (score) =>
   score === 100 ? "S" :
   score >= 97 ? "A+" :
@@ -150,139 +148,85 @@ const gradeLetter = (score) =>
   score >= 67 ? "D+" :
   score >= 60 ? "D" : "F";
 
-/* =========================
- * Disposition helpers
- * ========================= */
-
-function getRecommendedDisposition(caseState){
-  // Returns: { rec: "nicu"|"floor"|"either", reason: string }
-  if (!caseState) return { rec: "floor", reason: "No case data" };
-
-  const type = caseState.type;
-  const occl = (caseState.ctaOcclusion || "").toLowerCase();
-  const nihss = (caseState.nihssDetail && typeof caseState.nihssDetail.total === "number") ? caseState.nihssDetail.total : 0;
-  const intubated = !!(caseState.actions && caseState.actions.intubated);
-  const requiresIntubation = !!caseState.requiresIntubation;
-
-  // Hard ICU triggers
-  if (intubated || requiresIntubation) return { rec: "nicu", reason: "Airway/respiratory support" };
-  if (type === "ICH" || type === "SAH" || type === "SDH") return { rec: "nicu", reason: "Intracranial hemorrhage monitoring and BP/airway management" };
-
-  // Mimics generally do not require NeuroICU
-  if (type === "Mimic") return { rec: "floor", reason: "Stroke mimic without neurocritical care needs" };
-
-  // Ischemic stroke disposition rules (simulation-grade)
-  if (type === "Ischemic") {
-    // UI treats ICA/M1 as "either"
-    if (occl.includes("ica") || occl.includes("m1")) {
-      return { rec: "either", reason: "Large vessel occlusion (ICA/M1) — either disposition acceptable in this simulator" };
-    }
-
-    // Severe deficits -> ICU
-    if (nihss >= 15) return { rec: "nicu", reason: "Severe neurologic deficit (NIHSS ≥15)" };
-
-    // Otherwise floor
-    return { rec: "floor", reason: "Stable ischemic stroke presentation" };
-  }
-
-  // Fallback
-  return { rec: "floor", reason: "Default disposition" };
-}
-
-function isAdmitAppropriate(caseState, admitTo){
-  const { rec } = getRecommendedDisposition(caseState);
-  if (rec === "either") return true;
-  return admitTo === rec;
-}
-
 const randomBaselineMrs = () => {
-  const randomRoll = Math.random() * 100;
-  return randomRoll < 63 ? 0 :
-    randomRoll < 78 ? 1 :
-    randomRoll < 88 ? 2 :
-    randomRoll < 93 ? 3 :
-    randomRoll < 98 ? 4 : 5;
+  const r = Math.random() * 100;
+  return r < 63 ? 0 : r < 78 ? 1 : r < 88 ? 2 : r < 93 ? 3 : r < 98 ? 4 : 5;
 };
 
 const pickOcclusion = () => {
-  const occlusionWeightedTable = [
+  const table = [
     ["ICA", 20], ["MCA - M1", 30], ["MCA - proximal M2", 15], ["MCA - distal M2", 10],
     ["MCA - M3", 5], ["MCA - M4", 5], ["PCA - P1", 5], ["ACA - A1", 5], ["Basilar artery", 5],
   ];
-  let randomRoll = Math.random() * 100;
-  let accumulatedWeight = 0;
-  for (const [siteName, weightValue] of occlusionWeightedTable) {
-    accumulatedWeight += weightValue;
-    if (randomRoll < accumulatedWeight) return siteName;
-  }
+  let r = Math.random() * 100, acc = 0;
+  for (const [site, weight] of table) { acc += weight; if (r < acc) return site; }
   return "Basilar artery";
 };
 
-const contraindicationLabels = (caseState) =>
+const contraindicationLabels = (s) =>
   [
-    (caseState.bloodThinners==="yes") && "Recent blood thinner use (last dose within 48 hours)",
-    (caseState.bloodThinners==="unknown") && "Anticoagulant status unknown",
-    caseState.doac && "DOAC last dose within 48 hours",
-    caseState.recentGISurgery && "GI surgery within the past week",
-    caseState.recentStroke30d && "Prior stroke within the last month",
-    caseState.glucose < 60 && "Glucose <60 mg/dL",
-    (caseState.sbp>185 || caseState.dbp>110) && "BP above 185/110",
+    (s.bloodThinners==="yes") && "Recent blood thinner use (last dose within 48 hours)",
+    (s.bloodThinners==="unknown") && "Anticoagulant status unknown",
+    s.doac && "DOAC last dose within 48 hours",
+    s.recentGISurgery && "GI surgery within the past week",
+    s.recentStroke30d && "Prior stroke within the last month",
+    s.glucose < 60 && "Glucose <60 mg/dL",
+    (s.sbp>185 || s.dbp>110) && "BP above 185/110",
   ].filter(Boolean);
 
 
-function buildSymptomFromNIHSS(nihssDetails, affectedSide){
+function buildSymptomFromNIHSS(d, affectedSide){
   const parts = [];
   const side = affectedSide;
-  if ((side==="left"?nihssDetails.armL:nihssDetails.armR)>0 || (side==="left"?nihssDetails.legL:nihssDetails.legR)>0) parts.push(side + "-sided weakness");
-  if (nihssDetails.language>0) parts.push("word-finding difficulty");
-  if (nihssDetails.dysarthria>0) parts.push("slurred speech");
-  if (nihssDetails.facial>0) parts.push(side + " facial droop");
-  if (nihssDetails.gaze>0) parts.push("gaze deviation");
-  if (nihssDetails.visual>0) parts.push("visual field deficit");
-  if (nihssDetails.ataxia>0) parts.push("incoordination");
-  if (nihssDetails.sensory>0) parts.push("numbness");
-  if (nihssDetails.loc>0) parts.push("decreased responsiveness");
-  if (nihssDetails.neglect>0) parts.push("inattention/neglect");
+  if ((side==="left"?d.armL:d.armR)>0 || (side==="left"?d.legL:d.legR)>0) parts.push(side + "-sided weakness");
+  if (d.language>0) parts.push("word-finding difficulty");
+  if (d.dysarthria>0) parts.push("slurred speech");
+  if (d.facial>0) parts.push(side + " facial droop");
+  if (d.gaze>0) parts.push("gaze deviation");
+  if (d.visual>0) parts.push("visual field deficit");
+  if (d.ataxia>0) parts.push("incoordination");
+  if (d.sensory>0) parts.push("numbness");
+  if (d.loc>0) parts.push("decreased responsiveness");
+  if (d.neglect>0) parts.push("inattention/neglect");
   return parts;
 }
 
 function calcNIHSS({ type, affectedSide, dominantSide, site, mimicBias = null }) {
-  const clampNihssScore = (scoreValue, maximumScore) => Math.max(0, Math.min(scoreValue, maximumScore));
-  const clampNihssScoreToFour = (scoreValue) => clampNihssScore(scoreValue, 4);
+  const cap = (n,h)=>Math.max(0,Math.min(n,h)), cap4=(n)=>cap(n,4);
   let loc=0,facial=0,gaze=0,visual=0,armL=0,armR=0,legL=0,legR=0,language=0,dysarthria=0,ataxia=0,sensory=0,neglect=0;
   if (type === "Mimic") {
     loc = Math.random()<0.15 ? 1 : 0;
     sensory = choice([0,1]); dysarthria = choice([0,1]); if (mimicBias!=="non" && Math.random()<0.25) facial=1;
   } else if (type === "ICH" || type === "SAH") {
-    facial = clampNihssScore(randInt(0,2),3); gaze = clampNihssScore(randInt(0,2),2); visual = clampNihssScore(randInt(0,2),3); dysarthria = clampNihssScore(randInt(0,2),2);
-    if (affectedSide==="left"){ armL=clampNihssScoreToFour(randInt(1,3)); legL=clampNihssScoreToFour(randInt(1,3)); } else { armR=clampNihssScoreToFour(randInt(1,3)); legR=clampNihssScoreToFour(randInt(1,3)); }
-    language = affectedSide === (dominantSide==="right"?"left":"right") ? clampNihssScore(randInt(0,2),3) : 0;
+    facial = cap(randInt(0,2),3); gaze = cap(randInt(0,2),2); visual = cap(randInt(0,2),3); dysarthria = cap(randInt(0,2),2);
+    if (affectedSide==="left"){ armL=cap4(randInt(1,3)); legL=cap4(randInt(1,3)); } else { armR=cap4(randInt(1,3)); legR=cap4(randInt(1,3)); }
+    language = affectedSide === (dominantSide==="right"?"left":"right") ? cap(randInt(0,2),3) : 0;
   } else if (type === "SDH") {
     loc = Math.random()<0.35 ? 1 : 0;
-    facial = clampNihssScore(randInt(0,2),3); gaze = clampNihssScore(randInt(0,1),1); visual = clampNihssScore(randInt(0,1),2);
-    if (affectedSide==="left"){ armL=clampNihssScoreToFour(randInt(1,3)); legL=clampNihssScoreToFour(randInt(1,3)); armR=clampNihssScoreToFour(randInt(0,1)); legR=clampNihssScoreToFour(randInt(0,1)); }
-    else { armR=clampNihssScoreToFour(randInt(1,3)); legR=clampNihssScoreToFour(randInt(1,3)); armL=clampNihssScoreToFour(randInt(0,1)); legL=clampNihssScoreToFour(randInt(0,1)); }
-    language = affectedSide === (dominantSide==="right"?"left":"right") ? clampNihssScore(randInt(0,1),2) : 0;
-    dysarthria = clampNihssScore(randInt(0,2),2); ataxia = clampNihssScore(randInt(0,1),1); sensory = clampNihssScore(randInt(0,2),2);
+    facial = cap(randInt(0,2),3); gaze = cap(randInt(0,1),1); visual = cap(randInt(0,1),2);
+    if (affectedSide==="left"){ armL=cap4(randInt(1,3)); legL=cap4(randInt(1,3)); armR=cap4(randInt(0,1)); legR=cap4(randInt(0,1)); }
+    else { armR=cap4(randInt(1,3)); legR=cap4(randInt(1,3)); armL=cap4(randInt(0,1)); legL=cap4(randInt(0,1)); }
+    language = affectedSide === (dominantSide==="right"?"left":"right") ? cap(randInt(0,1),2) : 0;
+    dysarthria = cap(randInt(0,2),2); ataxia = cap(randInt(0,1),1); sensory = cap(randInt(0,2),2);
   } else {
     const severe = ["ICA","MCA - M1","Basilar artery"].includes(site);
     loc = severe ? (Math.random()<0.35 ? choice([1,2]) : 0) : (Math.random()<0.1 ? 1 : 0);
     const moderate = site === "MCA - proximal M2" || site === "MCA - distal M2";
     const mild = NON_EVT_SITES.includes(site) || !site;
-    facial = clampNihssScore(randInt(0, severe?2:moderate?2:1),3);
-    gaze = clampNihssScore(randInt(0, severe?2:1),2);
-    visual = clampNihssScore(randInt(0, severe?2:1),3);
+    facial = cap(randInt(0, severe?2:moderate?2:1),3);
+    gaze = cap(randInt(0, severe?2:1),2);
+    visual = cap(randInt(0, severe?2:1),3);
     if (affectedSide==="left"){
-      armL=clampNihssScoreToFour(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
-      legL=clampNihssScoreToFour(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
+      armL=cap4(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
+      legL=cap4(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
     } else {
-      armR=clampNihssScoreToFour(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
-      legR=clampNihssScoreToFour(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
+      armR=cap4(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
+      legR=cap4(randInt(severe?2:moderate?1:0, severe?4:moderate?3:2));
     }
-    language = affectedSide === (dominantSide==="right"?"left":"right") ? clampNihssScore(randInt(mild?0:1, severe?3:2),3) : 0;
-    dysarthria = clampNihssScore(randInt(0, (moderate||severe)?2:1),2);
-    ataxia = clampNihssScore(randInt(0, (moderate||severe)?2:1),2);
-    sensory = clampNihssScore(randInt(0,2),2);
+    language = affectedSide === (dominantSide==="right"?"left":"right") ? cap(randInt(mild?0:1, severe?3:2),3) : 0;
+    dysarthria = cap(randInt(0, (moderate||severe)?2:1),2);
+    ataxia = cap(randInt(0, (moderate||severe)?2:1),2);
+    sensory = cap(randInt(0,2),2);
   }
   if (site==="Basilar artery" || (site&&site.includes("PCA"))) language = 0;
   if (affectedSide==="left" && (armL>0||legL>0) && language>0) { if (Math.random()>=0.02) language = 0; }
@@ -298,67 +242,12 @@ function calcNIHSS({ type, affectedSide, dominantSide, site, mimicBias = null })
   return { loc, facial, gaze, visual, armL, armR, legL, legR, language, dysarthria, ataxia, sensory, neglect, total };
 }
 
-/**
- * ASPECTS calculator (simulation-grade).
- * - Returns { score: number|null, note: string }
- * - ASPECTS applies to anterior circulation ischemic stroke; for posterior circulation, returns null.
- */
-function calcASPECTS(onsetType, minutesSinceLKAW, ctaOcclusion, caseType){
-  // Mimics: treat as no early ischemic change.
-  if (caseType === "Mimic") return { score: 10, note: "Mimic/no early ischemic change" };
-
-  // Non-ischemic: ASPECTS not applicable.
-  if (caseType !== "Ischemic") return { score: null, note: "Not applicable" };
-
-  const occl = (ctaOcclusion || "").toLowerCase();
-
-  // Posterior circulation (or explicitly PCA/basilar): ASPECTS not applicable.
-  if (occl.includes("basilar") || occl.includes("pca")) {
-    return { score: null, note: "Posterior circulation" };
-  }
-
-  const hours = Math.max(0, (Number(minutesSinceLKAW) || 0) / 60);
-
-  // Base severity penalty by occlusion site (higher = worse)
-  let baseSeverityPenalty = 0.8; // default mild/no LVO
-  if (!ctaOcclusion) baseSeverityPenalty = 0.6; // no occlusion seen
-  else if (occl.includes("ica")) baseSeverityPenalty = 2.8;
-  else if (occl.includes("m1")) baseSeverityPenalty = 2.4;
-  else if (occl.includes("proximal m2")) baseSeverityPenalty = 1.9;
-  else if (occl.includes("distal m2")) baseSeverityPenalty = 1.5;
-  else if (occl.includes("m3") || occl.includes("m4")) baseSeverityPenalty = 0.9;
-  else if (occl.includes("aca")) baseSeverityPenalty = 1.0;
-
-  // Scale severity impact by time (early CT may look better despite severe occlusion)
-  const timeScale = 0.35 + 0.65 * Math.min(1, hours / 6); // 0.35 at time 0, -> 1.0 by 6h
-  const severityPenalty = baseSeverityPenalty * timeScale;
-
-  // Time penalty (monotonic; rough)
-  let timePenalty = 0;
-  if (hours <= 1) timePenalty = 0;
-  else if (hours <= 3) timePenalty = 0.4;
-  else if (hours <= 6) timePenalty = 0.9;
-  else if (hours <= 12) timePenalty = 1.6;
-  else timePenalty = 2.3;
-
-  // Unknown/wake-up imaging often occurs later and/or with more established changes.
-  const onsetPenalty = (onsetType === "known") ? 0 : 0.3;
-
-  // Small stochasticity to keep cases from feeling identical.
-  const noise = (Math.random() - 0.5) * 0.8; // [-0.4, +0.4]
-
-  const raw = 10 - severityPenalty - timePenalty - onsetPenalty + noise;
-  const score = Math.max(0, Math.min(10, Math.round(raw)));
-
-  return { score, note: "Simulated ASPECTS" };
-}
-
-const isDisablingDeficit = (nihssDetails, dominantSide) => {
-  const leftWeak = nihssDetails.armL>0 || nihssDetails.legL>0, rightWeak = nihssDetails.armR>0 || nihssDetails.legR>0;
+const isDisablingDeficit = (d, dominantSide) => {
+  const leftWeak = d.armL>0 || d.legL>0, rightWeak = d.armR>0 || d.legR>0;
   const unilateral = (leftWeak && !rightWeak) || (rightWeak && !leftWeak);
-  const dominantUE = dominantSide==="right" ? nihssDetails.armR>0 : nihssDetails.armL>0;
-  const anyLeg = nihssDetails.legL>0 || nihssDetails.legR>0;
-  return unilateral || dominantUE || anyLeg || nihssDetails.language>0 || nihssDetails.dysarthria>=2 || nihssDetails.ataxia>0 || nihssDetails.gaze>0 || nihssDetails.visual>0 || nihssDetails.facial>=2 || nihssDetails.neglect>0 || nihssDetails.loc>=1;
+  const dominantUE = dominantSide==="right" ? d.armR>0 : d.armL>0;
+  const anyLeg = d.legL>0 || d.legR>0;
+  return unilateral || dominantUE || anyLeg || d.language>0 || d.dysarthria>=2 || d.ataxia>0 || d.gaze>0 || d.visual>0 || d.facial>=2 || d.neglect>0 || d.loc>=1;
 };
 
 
@@ -409,20 +298,20 @@ const EMS_CONTEXT_TEMPLATES = {
 /* =========================
  * State helpers
  * ========================= */
-function cloneCase(caseStateToClone){
-  return { ...caseStateToClone, actions: { ...caseStateToClone.actions } };
+function cloneCase(d){
+  return { ...d, actions: { ...d.actions } };
 }
 
-function makeScorers(simulationState, pushToast, addLogEntry){
-  const penalize = (penaltyPoints, titleText, messageText) => {
-    simulationState.score = clamp(simulationState.score - penaltyPoints);
-    pushToast(titleText, messageText, "bad");
-    addLogEntry("bad", `${titleText}: ${messageText}`);
+function makeScorers(s, push, addLog){
+  const penalize = (d, t, m) => {
+    s.score = clamp(s.score - d);
+    push(t, m, "bad");
+    addLog("bad", `${t}: ${m}`);
   };
-  const reward = (rewardPoints, titleText, messageText) => {
-    simulationState.score = clamp(simulationState.score + rewardPoints);
-    pushToast(titleText, messageText, "good");
-    addLogEntry("good", `${titleText}: ${messageText}`);
+  const reward = (d, t, m) => {
+    s.score = clamp(s.score + d);
+    push(t, m, "good");
+    addLog("good", `${t}: ${m}`);
   };
   return { penalize, reward };
 }
@@ -458,17 +347,17 @@ const INPT_CONTEXT_TEMPLATES = {
   ]
 };
 
-function pickContextLine(activator, caseState) {
+function pickContextLine(activator, d) {
   const has = {
-    weakness: (caseState.armL>0||caseState.armR>0||caseState.legL>0||caseState.legR>0),
-    aphasia: caseState.language>0,
-    dysarthria: caseState.dysarthria>0,
-    gaze: caseState.gaze>0,
-    visual: caseState.visual>0,
-    ataxia: caseState.ataxia>0,
-    facial: caseState.facial>0,
-    loc: caseState.loc>0,
-    neglect: caseState.neglect>0,
+    weakness: (d.armL>0||d.armR>0||d.legL>0||d.legR>0),
+    aphasia: d.language>0,
+    dysarthria: d.dysarthria>0,
+    gaze: d.gaze>0,
+    visual: d.visual>0,
+    ataxia: d.ataxia>0,
+    facial: d.facial>0,
+    loc: d.loc>0,
+    neglect: d.neglect>0,
   };
   const pool = activator==="EMS" ? EMS_CONTEXT_TEMPLATES : INPT_CONTEXT_TEMPLATES;
   const eligible = [];
@@ -479,11 +368,8 @@ function pickContextLine(activator, caseState) {
 }
 
 
-function capFirst(inputText){
-  if (inputText == null) return "";
-  const normalizedText = String(inputText);
-  if (!normalizedText.length) return "";
-  return normalizedText.charAt(0).toUpperCase() + normalizedText.slice(1);
+function capFirst(s){
+  return s && s.length ? (s.charAt(0).toUpperCase() + s.slice(1)) : s;
 }
 
 /**
@@ -491,33 +377,33 @@ function capFirst(inputText){
  * into a natural narrative sentence starter.
  */
 function contextNarrative(activator, contextBrief){
-  let normalizedContextText = (contextBrief || "").trim().replace(/\s+/g," ");
-  if (!normalizedContextText) return "Patient was found with acute neurologic symptoms";
-  const lowerCaseContextText = normalizedContextText.toLowerCase();
+  let s = (contextBrief || "").trim().replace(/\s+/g," ");
+  if (!s) return "Patient was found with acute neurologic symptoms";
+  const lower = s.toLowerCase();
 
   // EMS-friendly rewrites
-  if (lowerCaseContextText.startsWith("bystanders noted")) return "Patient was observed by " + normalizedContextText.replace(/^bystanders\s+noted/i,"bystanders who noted");
-  if (lowerCaseContextText.startsWith("bystanders noticed")) return "Patient was observed by " + normalizedContextText.replace(/^bystanders\s+noticed/i,"bystanders who noticed");
-  if (lowerCaseContextText.startsWith("family reported")) return "Patient was evaluated after " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("family noticed")) return "Patient was evaluated after " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("spouse reported")) return "Patient was evaluated after " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("neighbor noticed")) return "Patient was evaluated after " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("bystanders described")) return "Patient was evaluated after " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("neighbors requested")) return capFirst(normalizedContextText).replace(/patient found/i,"the patient was found");
+  if (lower.startsWith("bystanders noted")) return "Patient was observed by " + s.replace(/^bystanders\s+noted/i,"bystanders who noted");
+  if (lower.startsWith("bystanders noticed")) return "Patient was observed by " + s.replace(/^bystanders\s+noticed/i,"bystanders who noticed");
+  if (lower.startsWith("family reported")) return "Patient was evaluated after " + s;
+  if (lower.startsWith("family noticed")) return "Patient was evaluated after " + s;
+  if (lower.startsWith("spouse reported")) return "Patient was evaluated after " + s;
+  if (lower.startsWith("neighbor noticed")) return "Patient was evaluated after " + s;
+  if (lower.startsWith("bystanders described")) return "Patient was evaluated after " + s;
+  if (lower.startsWith("neighbors requested")) return capFirst(s).replace(/patient found/i,"the patient was found");
 
   // If the fragment already starts with a subject, just capitalize it.
-  if (lowerCaseContextText.startsWith("ems ")) return capFirst(normalizedContextText);
-  if (lowerCaseContextText.startsWith("patient was")) return capFirst(normalizedContextText);
+  if (lower.startsWith("ems ")) return capFirst(s);
+  if (lower.startsWith("patient was")) return capFirst(s);
 
   // Location/time openers read well after "Patient was ..."
-  if (lowerCaseContextText.startsWith("found ")) return "Patient was " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("on ")) return "Patient was " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("at ")) return "Patient was " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("in ")) return "Patient was " + normalizedContextText;
-  if (lowerCaseContextText.startsWith("as ")) return "Patient was " + normalizedContextText;
+  if (lower.startsWith("found ")) return "Patient was " + s;
+  if (lower.startsWith("on ")) return "Patient was " + s;
+  if (lower.startsWith("at ")) return "Patient was " + s;
+  if (lower.startsWith("in ")) return "Patient was " + s;
+  if (lower.startsWith("as ")) return "Patient was " + s;
 
   // Inpatient fragments often begin with staff/team
-  return capFirst(normalizedContextText);
+  return capFirst(s);
 }
 
 /* =========================
@@ -532,20 +418,20 @@ function generateCase(mode="learning"){
   let activator = Math.random()<0.75 ? "EMS" : "Inpatient staff";
 
   if (mode==="learning"){
-          const randomRoll = Math.random(); baselineMrs=randomBaselineMrs(); doac=recentGISurgery=recentStroke30d=false; glucose=randInt(80,180);
-    if (randomRoll<0.15){ type="ICH"; minutesSinceLKAW=randInt(30,1440); }
-    else if (randomRoll<0.17){ type="SAH"; minutesSinceLKAW=randInt(30,1440); }
-    else if (randomRoll<0.20){ type="SDH"; minutesSinceLKAW=randInt(30,1440); }
+    const r=Math.random(); baselineMrs=randomBaselineMrs(); doac=recentGISurgery=recentStroke30d=false; glucose=randInt(80,180);
+    if (r<0.15){ type="ICH"; minutesSinceLKAW=randInt(30,1440); }
+    else if (r<0.17){ type="SAH"; minutesSinceLKAW=randInt(30,1440); }
+    else if (r<0.20){ type="SDH"; minutesSinceLKAW=randInt(30,1440); }
     else { type="Ischemic"; const hasLVO=Math.random()<0.66;
       if (hasLVO){ ctaOcclusion=pickOcclusion(); minutesSinceLKAW=ctaOcclusion==="MCA - distal M2"?randInt(361,1200):randInt(30,1200); perfMismatch=Math.random()<0.5; ischemicVolume=randInt(30,160); }
       else { onsetType=choice(["known","wake-up","unknown"]); minutesSinceLKAW=onsetType==="known"?randInt(60,540):randInt(240,960); ischemicVolume=randInt(10,80); }
     }
   } else {
-          const randomRoll = Math.random();
-    if (randomRoll<0.7){ type="Mimic"; onsetType=choice(["known","wake-up","unknown"]); minutesSinceLKAW=onsetType==="known"?randInt(30,600):onsetType==="wake-up"?randInt(360,1440):randInt(120,1440); }
-    else if (randomRoll<0.73){ type="SAH"; minutesSinceLKAW=randInt(30,1440); }
-    else if (randomRoll<0.88){ type="Ischemic"; ctaOcclusion=pickOcclusion(); minutesSinceLKAW=ctaOcclusion==="MCA - distal M2"?randInt(361,1200):randInt(30,1200); perfMismatch=Math.random()<0.5; ischemicVolume=randInt(30,160); }
-    else if (randomRoll<0.93){ type="Ischemic"; minutesSinceLKAW=randInt(10,270); /* doac tied to bloodThinners later */ recentGISurgery=Math.random()<0.03; recentStroke30d=Math.random()<0.03; glucose=randInt(70,220); }
+    const r=Math.random();
+    if (r<0.7){ type="Mimic"; onsetType=choice(["known","wake-up","unknown"]); minutesSinceLKAW=onsetType==="known"?randInt(30,600):onsetType==="wake-up"?randInt(360,1440):randInt(120,1440); }
+    else if (r<0.73){ type="SAH"; minutesSinceLKAW=randInt(30,1440); }
+    else if (r<0.88){ type="Ischemic"; ctaOcclusion=pickOcclusion(); minutesSinceLKAW=ctaOcclusion==="MCA - distal M2"?randInt(361,1200):randInt(30,1200); perfMismatch=Math.random()<0.5; ischemicVolume=randInt(30,160); }
+    else if (r<0.93){ type="Ischemic"; minutesSinceLKAW=randInt(10,270); /* doac tied to bloodThinners later */ recentGISurgery=Math.random()<0.03; recentStroke30d=Math.random()<0.03; glucose=randInt(70,220); }
     else { if (Math.random()<0.6) type="ICH"; else { type="Ischemic"; ctaOcclusion=Math.random()<0.86?pickOcclusion():null; }
       onsetType=choice(["known","wake-up","unknown"]); minutesSinceLKAW=onsetType==="known"?randInt(60,1440):randInt(240,1440);
       if (ctaOcclusion==="MCA - distal M2"){ onsetType="known"; if (minutesSinceLKAW<=360) minutesSinceLKAW=randInt(361,1200); }
@@ -567,7 +453,7 @@ function generateCase(mode="learning"){
   let sbp = type==="ICH"?randInt(180,230):randInt(100,185);
   let dbp = type==="ICH"?randInt(95,130):randInt(55, sbp<140?99:110);
   let spo2 = requiresIntubation ? randInt(82, 89) : randInt(92, 100);
-    let heartRateBeatsPerMinute = requiresIntubation ? randInt(105, 128) : randInt(56, 118);
+  let hr = requiresIntubation ? randInt(105, 128) : randInt(56, 118);
 
   // Blood thinners history (yes 7%, unknown 5%, else no)
   const rBT = Math.random()*100;
@@ -583,8 +469,8 @@ function generateCase(mode="learning"){
     doac = false;
   }
 // Narrative construction
-    const nihssDetails = nihssDetail;
-  const symptomParts = buildSymptomFromNIHSS(nihssDetails, affectedSide);
+  const d = nihssDetail;
+  const symptomParts = buildSymptomFromNIHSS(d, affectedSide);
   const symptomHint = symptomParts.slice(0,2).join(" and ");
   const extra = symptomHint ? " deficits of " + symptomHint : "";
 
@@ -592,7 +478,7 @@ function generateCase(mode="learning"){
              : onsetType==="wake-up" ? "wake-up stroke (unknown exact time)" : "unknown";
 
   const contextLine = (function(){
-    const line = pickContextLine(activator, nihssDetails);
+    const line = pickContextLine(activator, d);
     return activator==="EMS"
       ? `\nContext: Patient ${line}.`
       : `\nContext: Patient ${line}. Primary team requests immediate neurology evaluation.`;
@@ -608,19 +494,19 @@ if (doac) notes.push("recent DOAC ingestion within 48h");
   const mrs5 = baselineMrs===5 ? "\n" + activator + " reports the patient has severe baseline disability (mRS 5)." : "";
   const respLine = requiresIntubation ? "\nOn arrival, the patient is in obvious respiratory distress with hypoxia and poor airway protection." : "";
 
-  const contextBrief = pickContextLine(activator, nihssDetails);
+  const contextBrief = pickContextLine(activator, d);
   const respShort = requiresIntubation ? " Patient appears in respiratory distress." : "";
   const activatorPhrase = activator === "Inpatient staff" ? "Inpatient staff activates code stroke for" : `${activator} brings`;
   const stem = `${activatorPhrase} a ${age}-year-old ${sex} with${extra || " acute neurologic symptoms"}. Last known well: ${lka}. ${contextNarrative(activator, contextBrief)}. ${bloodThinners==="yes" ? "The patient last took blood thinner medication within the last 48 hours." : (bloodThinners==="unknown" ? "It is not known if the patient is on blood thinner medications." : "The patient does not take any blood thinner medications.")}` +
                `${notes.length ? " Notables: " + notes.join("; ") + "." : ""}` +
-               `${respShort} You are at bedside with the team.\n\nVitals: BP ${sbp}/${dbp}, HR ${heartRateBeatsPerMinute}, SpO2 ${spo2}%.`;
+               `${respShort} You are at bedside with the team.\n\nVitals: BP ${sbp}/${dbp}, HR ${hr}, SpO2 ${spo2}%.`;
 
   return {
     mode, age, sex, onsetType, minutesSinceLKAW, baselineMrs, type, ctaOcclusion, dominantSide, affectedSide,
     nihssDetail, doac, glucose, recentGISurgery, recentStroke30d, perfMismatch, ctpMismatchPct, ischemicVolume, ctpTmax6, ctpRcbf30,
     aspects: null, mriMismatch: Math.random()<0.55,
     actions: { examine:false, ctNonCon:false, cta:false, ctp:false, mri:false, tnk:false, evt:false, admitted:null, cancel:false, nicardipine:false, d50:false, intubated:false, pcc:false },
-    userClass: null, score: 100, finished: false, stem, sbp, dbp, spo2, heartRateBeatsPerMinute, requiresIntubation, activator, bloodThinners,
+    userClass: null, score: 100, finished: false, stem, sbp, dbp, spo2, hr, requiresIntubation, activator, bloodThinners,
   };
 }
 
@@ -629,52 +515,50 @@ if (doac) notes.push("recent DOAC ingestion within 48h");
  * Medication/airway indication helpers
  * ========================= */
 
-function tnkScenarioEligible(caseState){
-  // Simulator uses: caseState.type, onsetType, minutesSinceLKAW, sbp/dbp, glucose, doac, actions.ctp/actions.mri
-  if (!caseState) return false;
-  if (caseState.type !== "Ischemic") return false;
+function tnkScenarioEligible(s){
+  // "Scenario eligible" = there exists a plausible TNK pathway for this case if key steps (BP control / required imaging) are completed.
+  if (!s || s.type!=="Ischemic") return false;
 
-  const hours = minutesToHours(caseState.minutesSinceLKAW);
-  if (hours > 4.5) return false;
+  const h = minutesToHours(s.minutesSinceLKAW);
 
-  // Anticoagulant exclusion (simplified)
-  if (caseState.doac) return false;
+  // Standard window: known onset ≤4.5h
+  const withinStandard = (s.onsetType==="known" && h<=4.5);
 
-  const sbp = (typeof caseState.sbp === "number")
-    ? caseState.sbp
-    : (caseState.vitals && typeof caseState.vitals.sbp === "number" ? caseState.vitals.sbp : 0);
-  const dbp = (typeof caseState.dbp === "number")
-    ? caseState.dbp
-    : (caseState.vitals && typeof caseState.vitals.dbp === "number" ? caseState.vitals.dbp : 0);
+  // Extended window: known onset ≤9h ONLY if underlying CTP mismatch is significant (internal threshold).
+  const hasSignificantMismatch = ((s.ctpMismatchPct ?? 0) >= 50);
+  const withinExtendedCTP = (s.onsetType==="known" && h<=9 && h>4.5 && hasSignificantMismatch);
 
-  if (sbp > 185 || dbp > 110) return false;
+  // Wake-up/unknown (simulator rule): underlying MRI mismatch AND no LVO.
+  const withinMRI = ((s.onsetType==="wake-up" || s.onsetType==="unknown") && !s.ctaOcclusion && s.mriMismatch);
 
-  const glucose = (typeof caseState.glucose === "number") ? caseState.glucose : 0;
-  if (glucose < 50) return false;
+  const withinWindow = withinStandard || withinExtendedCTP || withinMRI;
+  if (!withinWindow) return false;
 
-  // Wake-up/unknown often require advanced imaging; allow if CTP or MRI obtained.
-  if (caseState.onsetType === "wake-up" || caseState.onsetType === "unknown") {
-    const hasAdvancedImaging = !!(caseState.actions && (caseState.actions.ctp || caseState.actions.mri));
-    if (!hasAdvancedImaging) return false;
-  }
+  // Hard exclusions for TNK pathway in this simulator
+  if (s.bloodThinners==="yes" || s.bloodThinners==="unknown") return false;
+  if (s.doac) return false;
+  if (s.recentGISurgery) return false;
+  if (s.recentStroke30d) return false;
+
+  // CT non-contrast should precede thrombolysis decisions in the app workflow.
+  // We still allow "scenario eligible" to be true even before CT is clicked, but require it for the BP-control prompt to appear.
+  if (!s.actions?.ctNonCon) return false;
 
   return true;
 }
 
-function nicardipineIndication(caseState){
-  if (!caseState) return { isIndicated: false, reason: "No case" };
-
-  if (caseState.type==="ICH" || caseState.type==="SAH"){
-    if (caseState.vitals.sbp >= 140) return { isIndicated: true, reason: "Acute hemorrhage with SBP ≥140" };
-    return { isIndicated: false, reason: "SBP below 140" };
+function nicardipineIndication(s){
+  // Hemorrhage with SBP >=140: yes
+  if (s.type==="ICH" || s.type==="SAH" || s.type==="SDH"){
+    if (s.sbp >= 140) return {ok:true, reason:"Hemorrhage with SBP ≥140 before NeuroICU"};
+    return {ok:false, reason:"Hemorrhage but SBP <140"};
   }
-
-  // For ischemic presentations, nicardipine is typically used only if SBP/DBP exceed thrombolysis thresholds or to meet thrombectomy targets.
-  if (tnkScenarioEligible(caseState) && (caseState.vitals.sbp > 185 || caseState.vitals.dbp > 110)){
-    return { isIndicated: true, reason: "Eligible for thrombolysis but BP above threshold" };
+  // Ischemic: only when BP is above TNK thresholds AND a TNK path exists
+  if (s.type==="Ischemic"){
+    if ((s.sbp>185 || s.dbp>110) && tnkScenarioEligible(s)) return {ok:true, reason:"Pre-TNK BP control (SBP>185 or DBP>110)"};
+    return {ok:false, reason:"No TNK path or BP not above threshold"};
   }
-
-  return { isIndicated: false, reason: "No clear indication" };
+  return {ok:false, reason:"Not indicated"};
 }
 /* =========================
  * Actions panel
@@ -741,14 +625,15 @@ function ActionsPanel({ onAction, disabled, disabledMap, hideSubs }) {
  * Small UI components
  * ========================= */
 function Tag({ kind="info", children }){
-  const getClassNameForKind = (kindKey)=>{
-    if (kindKey==="good") return "border-emerald-700 bg-emerald-900/40 text-emerald-100";
-    if (kindKey==="bad") return "border-rose-700 bg-rose-900/40 text-rose-100";
-    if (kindKey==="warn") return "border-amber-700 bg-amber-900/40 text-amber-100";
-    return "border-slate-700 bg-slate-900/60 text-slate-100";
+  const cls = (k)=>{
+    if (k==="good") return "border-emerald-700 bg-emerald-900/40 text-emerald-100";
+    if (k==="bad") return "border-rose-700 bg-rose-900/40 text-rose-100";
+    if (k==="warn") return "border-amber-700 bg-amber-900/40 text-amber-100";
+    if (k==="info") return "border-slate-700 bg-slate-900/40 text-slate-100";
+    return "border-slate-700 bg-slate-900/40 text-slate-100";
   };
   return (
-    <span className={"inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold " + getClassNameForKind(kind)}>
+    <span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide", cls(kind)].join(" ")}>
       {children}
     </span>
   );
@@ -766,40 +651,40 @@ function InfoChip({ label, value }){
 /* =========================
  * Snapshot
  * ========================= */
-function CaseSnapshot({ caseState }) {
-  const formatMinutes = (minutesValue)=>{ const hoursValue=Math.floor(minutesValue/60), minutesRemainder=minutesValue%60; return hoursValue?`${hoursValue}h ${minutesRemainder}m`:`${minutesRemainder}m`; };
-  const onset = caseState.onsetType==="known" ? `${formatMinutes(caseState.minutesSinceLKAW)} since LKAW` : caseState.onsetType==="wake-up" ? "Wake-up stroke (unknown exact time)" : "Unknown LKAW";
-    const contraindicationSummaryPieces = [];
-  if (caseState.bloodThinners && caseState.bloodThinners!=="no") contraindicationSummaryPieces.push("On blood thinners");
-  if (caseState.doac) contraindicationSummaryPieces.push("DOAC <=48h");
-  if (caseState.recentGISurgery) contraindicationSummaryPieces.push("GI surgery 7d");
-  if (caseState.recentStroke30d) contraindicationSummaryPieces.push("Prior stroke 30d");
-  if (caseState.glucose<60) contraindicationSummaryPieces.push(`Hypoglycemia (${caseState.glucose})`);
-  const perf = caseState.type==="Ischemic" ? `TMax>6s ${caseState.ctpTmax6}cc; rCBF<30% ${caseState.ctpRcbf30}cc (ratio ${(caseState.ctpTmax6/Math.max(1,caseState.ctpRcbf30)).toFixed(1)})` : "n/a";
+function CaseSnapshot({ s }) {
+  const fmtMins = (m)=>{ const h=Math.floor(m/60), mm=m%60; return h?`${h}h ${mm}m`:`${mm}m`; };
+  const onset = s.onsetType==="known" ? `${fmtMins(s.minutesSinceLKAW)} since LKAW` : s.onsetType==="wake-up" ? "Wake-up stroke (unknown exact time)" : "Unknown LKAW";
+  const cx=[];
+  if (s.bloodThinners && s.bloodThinners!=="no") cx.push("On blood thinners");
+  if (s.doac) cx.push("DOAC <=48h");
+  if (s.recentGISurgery) cx.push("GI surgery 7d");
+  if (s.recentStroke30d) cx.push("Prior stroke 30d");
+  if (s.glucose<60) cx.push(`Hypoglycemia (${s.glucose})`);
+  const perf = s.type==="Ischemic" ? `TMax>6s ${s.ctpTmax6}cc; rCBF<30% ${s.ctpRcbf30}cc (ratio ${(s.ctpTmax6/Math.max(1,s.ctpRcbf30)).toFixed(1)})` : "n/a";
 
   const items = [
-    ["Age / Sex", `${caseState.age} / ${caseState.sex}`],
+    ["Age / Sex", `${s.age} / ${s.sex}`],
     ["Onset", onset],
-    ["Baseline mRS", caseState.baselineMrs],
-    ["Current BP", `${caseState.sbp}/${caseState.dbp}`],
-    ["SpO2", `${caseState.spo2}%`],
-    ["On blood thinners", caseState.bloodThinners.toUpperCase()],
-    ["Activator", caseState.activator],
-    ...(contraindicationSummaryPieces.length ? [["Contraindications", contraindicationSummaryPieces.join(", ")]] : []),
-    ...(caseState.actions.examine ? [["NIHSS total", caseState.nihssDetail.total], ["Glucose", `${caseState.glucose} mg/dL`]] : []),
-    ...(caseState.actions.ctNonCon ? [["CT Head", (caseState.type==="Ischemic"||caseState.type==="Mimic") ? `No hemorrhage${caseState.aspects!==null?`, ASPECTS ${caseState.aspects}`:""}` : caseState.type + " on CT"]] : []),
-    ...(caseState.actions.cta ? [["CTA", caseState.type==="Ischemic" ? (caseState.ctaOcclusion || "No occlusion") : "n/a"]] : []),
-    ...(caseState.actions.ctp ? [["CT Perfusion", perf]] : []),
-    ...(caseState.actions.mri ? [["Hyperacute MRI", caseState.mriMismatch ? "DWI/FLAIR mismatch" : "No mismatch"]] : []),
-    ...(caseState.actions.tnk ? [["TNK", "Given"]] : []),
-    ...(caseState.actions.evt ? [["EVT", "Performed"]] : []),
-    ...(caseState.actions.nicardipine ? [["BP Rx", "Nicardipine"]] : []),
-    ...(caseState.actions.pcc ? [["Reversal", "PCC given"]] : []),
-    ...(caseState.actions.d50 ? [["Dextrose", "D50 given"]] : []),
-    ...(caseState.actions.intubated ? [["Airway", "Intubated"]] : []),
-    ...(caseState.actions.cancel || caseState.actions.admitted ? [["Disposition", caseState.actions.cancel ? "Code cancelled" : caseState.actions.admitted==="nicu" ? "NeuroICU" : "Floor"]] : []),
+    ["Baseline mRS", s.baselineMrs],
+    ["Current BP", `${s.sbp}/${s.dbp}`],
+    ["SpO2", `${s.spo2}%`],
+    ["On blood thinners", s.bloodThinners.toUpperCase()],
+    ["Activator", s.activator],
+    ...(cx.length ? [["Contraindications", cx.join(", ")]] : []),
+    ...(s.actions.examine ? [["NIHSS total", s.nihssDetail.total], ["Glucose", `${s.glucose} mg/dL`]] : []),
+    ...(s.actions.ctNonCon ? [["CT Head", (s.type==="Ischemic"||s.type==="Mimic") ? `No hemorrhage${s.aspects!==null?`, ASPECTS ${s.aspects}`:""}` : s.type + " on CT"]] : []),
+    ...(s.actions.cta ? [["CTA", s.type==="Ischemic" ? (s.ctaOcclusion || "No occlusion") : "n/a"]] : []),
+    ...(s.actions.ctp ? [["CT Perfusion", perf]] : []),
+    ...(s.actions.mri ? [["Hyperacute MRI", s.mriMismatch ? "DWI/FLAIR mismatch" : "No mismatch"]] : []),
+    ...(s.actions.tnk ? [["TNK", "Given"]] : []),
+    ...(s.actions.evt ? [["EVT", "Performed"]] : []),
+    ...(s.actions.nicardipine ? [["BP Rx", "Nicardipine"]] : []),
+    ...(s.actions.pcc ? [["Reversal", "PCC given"]] : []),
+    ...(s.actions.d50 ? [["Dextrose", "D50 given"]] : []),
+    ...(s.actions.intubated ? [["Airway", "Intubated"]] : []),
+    ...(s.actions.cancel || s.actions.admitted ? [["Disposition", s.actions.cancel ? "Code cancelled" : s.actions.admitted==="nicu" ? "NeuroICU" : "Floor"]] : []),
   ];
-  return <div className="mt-2 flex flex-wrap gap-2">{items.map(([labelKey, labelValue]) =><InfoChip key={labelKey} label={labelKey} value={String(labelValue)} />)}</div>;
+  return <div className="mt-2 flex flex-wrap gap-2">{items.map(([k,v])=><InfoChip key={k} label={k} value={String(v)} />)}</div>;
 }
 
 /* =========================
@@ -813,25 +698,21 @@ Psychogios, M., Brehm, A., Ribo, M., Rizzo, F., Strbian, D., Räty, S., Arenilla
 Thomalla, G., Simonsen, C. Z., Boutitie, F., Andersen, G., Berthezene, Y., Cheng, B., Cheripelli, B., Cho, T.-H., Fazekas, F., Fiehler, J., Ford, I., Galinovic, I., Gellissen, S., Golsari, A., Gregori, J., Günther, M., Guibernau, J., Häusler, K. G., Hennerici, M., … Gerloff, C. (2018). MRI-guided thrombolysis for stroke with unknown time of onset. New England Journal of Medicine, 379(7), 611–622. https://doi.org/10.1056/nejmoa1804355`;
 
 const URL_RE = /(https?:\/\/[^\s)\]]+)/g;
-function renderWithLinks(inputText){
-  if (!inputText) return null;
+function renderWithLinks(str) {
   const parts = [];
-  const urlPattern = /(https?:\/\/\S+)/g;
-  let lastIndex = 0;
-
-  inputText.replace(urlPattern, (matchedText, matchedUrl, matchIndex)=>{
-    if (matchIndex > lastIndex) parts.push(inputText.slice(lastIndex, matchIndex));
+  let last = 0;
+  str.replace(URL_RE, (m, url, idx) => {
+    if (idx > last) parts.push(str.slice(last, idx));
     parts.push(
-      <a key={matchedUrl + ":" + matchIndex} href={matchedUrl} target="_blank" rel="noreferrer" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">
-        {matchedUrl}
+      <a key={url + idx} href={url} target="_blank" rel="noreferrer" className="underline hover:text-sky-300 break-all">
+        {url}
       </a>
     );
-    lastIndex = matchIndex + matchedText.length;
-    return matchedText;
+    last = idx + m.length;
+    return m;
   });
-
-  if (lastIndex < inputText.length) parts.push(inputText.slice(lastIndex));
-  return parts.length === 1 ? parts[0] : <>{parts}</>;
+  if (last < str.length) parts.push(str.slice(last));
+  return parts;
 }
 
 const CitationsModal = ({ open, onX }) => {
@@ -846,8 +727,8 @@ const CitationsModal = ({ open, onX }) => {
         </button>
         <h3 className="text-base font-semibold pr-8">citations</h3>
         <ul className="mt-3 list-disc space-y-3 pl-5 text-sm leading-relaxed text-slate-300 select-text">
-          {items.map((entry, entryIndex) => (
-            <li key={entryIndex} className="break-words">{renderWithLinks(entry)}</li>
+          {items.map((entry, i) => (
+            <li key={i} className="break-words">{renderWithLinks(entry)}</li>
           ))}
         </ul>
       </div>
@@ -892,102 +773,59 @@ const SimpleModal=({open,title,onX,children,widthClass="w-[min(96vw,520px)]"})=>
   </div>
 ):null;
 
-
-// Exam classification options (used in NIHSSSummary)
-const CLASSES = [
-  { key: "disabling", label: "Disabling deficit" },
-  { key: "non", label: "Non-disabling deficit" },
-];
-
-function NIHSSSummary({ detail, onChoose }){
-  if (!detail) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-black/30 p-4 text-sm text-slate-300">
-        No examination data available.
-      </div>
-    );
-  }
-
-  const scoreOrZero = (maybeNumber) => (Number.isFinite(maybeNumber) ? maybeNumber : 0);
-
-  const nihssTiles = [
-    { label: "LOC", value: scoreOrZero(detail.loc) },
-    { label: "Facial", value: scoreOrZero(detail.facial) },
-    { label: "Gaze/Eyes", value: scoreOrZero(detail.gaze) },
-
-    { label: "Visual fields", value: scoreOrZero(detail.visual) },
-    { label: "Left arm", value: scoreOrZero(detail.armL) },
-    { label: "Right arm", value: scoreOrZero(detail.armR) },
-
-    { label: "Left leg", value: scoreOrZero(detail.legL) },
-    { label: "Right leg", value: scoreOrZero(detail.legR) },
-    { label: "Language", value: scoreOrZero(detail.language) },
-
-    { label: "Dysarthria", value: scoreOrZero(detail.dysarthria) },
-    { label: "Ataxia", value: scoreOrZero(detail.ataxia) },
-    { label: "Sensory", value: scoreOrZero(detail.sensory) },
-
-    { label: "Inattention (neglect)", value: scoreOrZero(detail.neglect), span: 1 },
+function NIHSSSummary({ detail, onChoose }) {
+  if (!detail) return null;
+  const rows = [
+    ["LOC", detail.loc],
+    ["Facial",detail.facial],["Gaze/Eyes",detail.gaze],["Visual fields",detail.visual],
+    ["Left arm",detail.armL],["Right arm",detail.armR],["Left leg",detail.legL],["Right leg",detail.legR],
+    ["Language",detail.language],["Dysarthria",detail.dysarthria],["Ataxia",detail.ataxia],["Sensory",detail.sensory],
+    ["Inattention (neglect)", detail.neglect]
   ];
-
-  const totalNihss = scoreOrZero(detail.total);
-
   return (
-    <div className="rounded-2xl border border-slate-800 bg-black/25 p-4">
-      <div className="text-sm font-semibold text-slate-100">Neurologic exam summary (NIHSS)</div>
-
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {nihssTiles.map((tile)=>(
-          <div
-            key={tile.label}
-            className="flex items-center justify-between rounded-xl border border-slate-800 bg-black/30 px-3 py-2"
-          >
-            <span className="text-xs text-slate-300">{tile.label}</span>
-            <span className="text-sm font-semibold text-slate-100 tabular-nums">{tile.value}</span>
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <div className="text-sm font-semibold">Neurologic exam summary (NIHSS)</div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-3">
+        {rows.map(([k,v])=>(
+          <div key={k} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/50 px-2 py-1">
+            <span>{k}</span><span className="font-mono">{v}</span>
           </div>
         ))}
-
-        <div className="col-span-3 flex items-center justify-between rounded-xl border border-slate-800 bg-black/30 px-3 py-2">
-          <span className="text-xs text-slate-300">Total NIHSS</span>
-          <span className="text-sm font-semibold text-slate-100 tabular-nums">{totalNihss}</span>
+        <div className="col-span-2 sm:col-span-3 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
+          <span>Total NIHSS</span><span className="font-mono font-bold">{detail.total}</span>
         </div>
       </div>
-
-      <div className="mt-4 flex gap-2">
-        <button
-          onClick={()=>onChoose("non")}
-          className="flex-1 rounded-xl border border-slate-700 bg-black/30 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-500"
-        >
-          Non-disabling
-        </button>
-        <button
-          onClick={()=>onChoose("disabling")}
-          className="flex-1 rounded-xl border border-emerald-600 bg-emerald-900/30 px-4 py-2 text-sm font-semibold text-emerald-100 hover:border-emerald-400"
-        >
-          Disabling
-        </button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button onClick={()=>onChoose("non")} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-semibold hover:bg-slate-800">Non-disabling</button>
+        <button onClick={()=>onChoose("disabling")} className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-sm font-semibold text-emerald-200 hover:bg-emerald-900/60">Disabling</button>
       </div>
     </div>
   );
 }
 
-const ConfirmDialog = ({ open, title, message, confirmLabel="Confirm", cancelLabel="Cancel", onOK, onX }) =>
+const ConfirmDialog = ({ open, title, message, ok = "Confirm", cancel = "Cancel", onOK, onX }) =>
   open ? (
-    <SimpleModal open={open} title={title} onX={onX} widthClass="max-w-lg">
-      <div className="text-sm text-slate-300">{message}</div>
-      <div className="mt-4 flex justify-end gap-2">
-        <button onClick={onX} className="rounded-xl border border-slate-800 bg-black/30 px-3 py-2 text-sm hover:border-slate-600">
-          {cancelLabel}
-        </button>
-        <button onClick={onOK} className="rounded-xl border border-cyan-700 bg-cyan-900/30 px-3 py-2 text-sm font-semibold text-cyan-100 hover:border-cyan-500">
-          {confirmLabel}
-        </button>
+    <div className="fixed inset-0 z-[120] grid place-items-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onX} />
+      <div className="relative w-[min(96vw,480px)] rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+        <div className="text-base font-semibold">{title}</div>
+        <div className="mt-2 text-sm text-slate-300 whitespace-pre-wrap">{message}</div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onX} className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm">
+            {cancel}
+          </button>
+          <button
+            onClick={onOK}
+            className="rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-sm font-semibold text-emerald-200"
+          >
+            {ok}
+          </button>
+        </div>
       </div>
-    </SimpleModal>
+    </div>
   ) : null;
 
-
-const OtherActionsDialog = ({ open, onX, onPick, caseState }) =>
+const OtherActionsDialog = ({ open, onX, onPick, s }) =>
   open ? (
     <div className="fixed inset-0 z-[120] grid place-items-center">
       <div className="absolute inset-0 bg-black/60" onClick={onX} />
@@ -995,16 +833,16 @@ const OtherActionsDialog = ({ open, onX, onPick, caseState }) =>
         <div className="text-base font-semibold">Other actions</div>
         <div className="mt-2 text-sm text-slate-300">Quick interventions:</div>
         <div className="mt-3 grid grid-cols-1 gap-2">
-          <button onClick={()=>onPick("nicardipine")} disabled={!!caseState.actions.nicardipine} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (caseState.actions.nicardipine?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+          <button onClick={()=>onPick("nicardipine")} disabled={!!s.actions.nicardipine} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.nicardipine?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
             Administer nicardipine
           </button>
-          <button onClick={()=>onPick("d50")} disabled={!!caseState.actions.d50} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (caseState.actions.d50?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+          <button onClick={()=>onPick("d50")} disabled={!!s.actions.d50} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.d50?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
             Administer D50
           </button>
-          <button onClick={()=>onPick("intubate")} disabled={!!caseState.actions.intubated} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (caseState.actions.intubated?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+          <button onClick={()=>onPick("intubate")} disabled={!!s.actions.intubated} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.intubated?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
             Intubate patient
           </button>
-          <button onClick={()=>onPick("pcc")} disabled={!!caseState.actions.pcc} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (caseState.actions.pcc?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
+          <button onClick={()=>onPick("pcc")} disabled={!!s.actions.pcc} className={"rounded-lg border px-3 py-2 text-left font-semibold " + (s.actions.pcc?"border-slate-700 bg-slate-800/60 opacity-60":"border-sky-700 bg-sky-900/40 text-sky-200 hover:bg-sky-900/60")}>
             Administer PCC
           </button>
         </div>
@@ -1033,7 +871,7 @@ function App(){
   const [showExam, setShowExam] = useState(false);
 
   const addLog = useCallback((kind, text)=>{
-    setLog((previousLogEntries) => [{ logEntryId: uid(), kind, text, timestampMilliseconds: Date.now() }, ...previousLogEntries].slice(0, MAX_LOG_ITEMS));
+    setLog((previousLogEntries) => [{ id: uid(), kind, text, t: Date.now() }, ...previousLogEntries].slice(0, MAX_LOG_ITEMS));
   }, []);
 
   const reset = ()=>{
@@ -1085,7 +923,7 @@ function App(){
         push("Recommended disposition", `Recommend ${recLabel} (${reason}).`, "warn", 5200);
       }
     }
-    finishCase(updatedCaseStateForDisposition);
+    finishCase(s);
   };
 
   const commitCancel = ()=>{
@@ -1114,7 +952,7 @@ function App(){
     if (otherActionKey==="nicardipine"){
       if (workingCaseStateForOtherAction.actions.nicardipine){ push("Already given","Nicardipine already recorded.","warn"); }
       else {
-        if (workingCaseStateForOtherAction.type==="Ischemic" && !tnkScenarioEligible(workingCaseStateForOtherAction)) {
+        if (workingCaseStateForOtherAction.type==="Ischemic" && !tnkScenarioEligible(s)) {
           penalize(6,"BP lowering not indicated","Ischemic stroke without TNK path — avoid routine nicardipine unless otherwise required.");
         }
         workingCaseStateForOtherAction.actions.nicardipine=1;
@@ -1461,7 +1299,7 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
           <h2 className="mt-4 text-base font-semibold">Log</h2>
           <div className="mt-2 flex-1 min-h-0 overflow-auto rounded-xl border border-slate-800 bg-slate-950/60 p-2 text-sm">
             {log.length===0 ? <div className="text-slate-400">No activity yet.</div> : log.map((logEntry)=>(
-              <div key={logEntry.logEntryId} className="border-b border-dashed border-slate-800 py-2 last:border-b-0">
+              <div key={logEntry.id} className="border-b border-dashed border-slate-800 py-2 last:border-b-0">
                 <div className="flex items-center gap-2">
                   <Tag kind={logEntry.kind}>{logEntry.kind.toUpperCase()}</Tag>
                   <span className="text-slate-200">{logEntry.text}</span>
@@ -1473,7 +1311,7 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
 
         <section className={PANEL}>
           <h2 className="text-base font-semibold">Case Snapshot</h2>
-          <CaseSnapshot caseState={data} />
+          <CaseSnapshot s={data} />
         </section>
       </main>
 
@@ -1493,7 +1331,7 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
         open={!!pendingAdmit}
         title={"Admit to " + (pendingAdmit==="nicu" ? "NeuroICU" : "Floor") + "?"}
         message={"Admit to " + (pendingAdmit==="nicu" ? "NeuroICU" : "Floor") + " now? This will end and grade the case."}
-        confirmLabel="Yes, admit"
+        ok="Yes, admit"
         onX={()=>{ setPendingAdmit(null); push("Admission cancelled","No changes made.","warn",2000); }}
         onOK={()=>{ const admissionDestination = pendingAdmit; setPendingAdmit(null); commitAdmit(admissionDestination); }}
       />
@@ -1503,8 +1341,8 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
         open={!!pendingMode}
         title="Switch mode?"
         message={modeMsg}
-        confirmLabel="Switch mode"
-        cancelLabel="Stay here"
+        ok="Switch mode"
+        cancel="Stay here"
         onX={()=>setPendingMode(null)}
         onOK={()=>{ const selectedMode = pendingMode; setPendingMode(null); applyMode(selectedMode); }}
       />
@@ -1514,14 +1352,14 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
         open={!!pendingCancel}
         title="Cancel code stroke?"
         message="This will end the case now and no stroke intervention will be performed. Continue?"
-        confirmLabel="Yes, cancel"
-        cancelLabel="Keep code active"
+        ok="Yes, cancel"
+        cancel="Keep code active"
         onX={()=>setPendingCancel(false)}
         onOK={commitCancel}
       />
 
       {/* Examine modal */}
-      <SimpleModal open={showExam} title="Examination" onX={()=>setShowExam(false)} widthClass="w-[min(96vw,720px)]">
+      <SimpleModal open={showExam} title="Examination" onX={()=>setShowExam(false)}>
         <NIHSSSummary detail={data.nihssDetail} onChoose={chooseClass} />
       </SimpleModal>
 
@@ -1530,7 +1368,7 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
         open={showOther}
         onX={()=>setShowOther(false)}
         onPick={pickOther}
-        caseState={data}
+        s={data}
       />
     </div>
   );
@@ -1542,7 +1380,6 @@ addLog("info",`CTP recorded: TMax>6s ${workingCaseStateForAction.ctpTmax6}cc; rC
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
 
-    
-</script>
+    </script>
   </body>
 </html>
